@@ -1,0 +1,5 @@
+testout
+venv
+.idea
+__pycache__
+data.csv

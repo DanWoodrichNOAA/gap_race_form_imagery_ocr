@@ -1,9 +1,10 @@
 from keras_ocr.tools import read
 import code
 import cv2
-import math
-import time #just for test, delete after
-from statistics import median
+import numpy as np
+from time import time
+import random
+import pytesseract
 
 #use keras ocr to locate text in image
 #use semantic similarity algorithm to locate title text
@@ -31,79 +32,7 @@ def simple_semantic(word1,word2):
 
     return length_res + diff_letter_count
 
-#this is a stackoverflow function to get the cropped and straighted image from a rectangle at an angle.
-def get_sub_image(rect, src):
-    # Get center, size, and angle from rect
-    center, size, theta = rect
-    # Convert to int
-    center, size = tuple(map(int, center)), tuple(map(int, size))
-    # Get rotation matrix for rectangle
-    M = cv2.getRotationMatrix2D( center, theta, 1)
-    # Perform rotation on src image
-    dst = cv2.warpAffine(src, M, src.shape[:2])
-    out = cv2.getRectSubPix(dst, size, center)
-    return out
 
-def get_mod_field(coords,angle,exps_x, exps_y, form_tl_xs, form_tl_ys):
-
-    #pseudo: find the modified tl of the field - the current coords describe
-    #relative distance to the form tl. need to calculate original angle, then
-    #add in angle and solve right triangle to find new tl coordinate.
-
-    hyp = math.sqrt((coords[0][0]) ** 2 + (coords[0][1]) ** 2)
-
-    og_angle = math.asin(coords[0][1]/ hyp)
-
-    new_angle = og_angle - angle
-
-    tlx = hyp * math.cos(new_angle)
-    tly = hyp * math.sin(new_angle)
-
-    #now, take these values, expand by x and y exps, and add to form tl to get absolute position
-
-    tlx = (tlx * exps_x) + form_tl_xs
-    tly = (tly * exps_y) + form_tl_ys
-
-    x_hyp = (coords[1][0]-coords[0][0]) * exps_x
-    y_hyp = (coords[2][1]-coords[1][1]) * exps_y
-
-    trx = tlx + x_hyp * math.cos(angle)
-    try_ = tly - x_hyp * math.sin(angle)
-
-    blx = tlx + y_hyp * math.sin(angle)
-    bly = tly + y_hyp * math.cos(angle)
-
-    brx = blx + x_hyp * math.cos(angle)
-    bry = bly - x_hyp * math.sin(angle)
-
-    #coords_mod = [[tlx,tly],[trx,try_],[blx,bly],[brx,bry]]
-
-    #instead of returning the above, want to try to return as cv2 rect type which
-    #may allow me to crop it while rotated.
-
-    centerx = (tlx + trx + blx + brx) / 4
-    centery = (tly + try_ + bly + bry) / 4
-
-    #cv2 expects degrees
-    return ((centerx,centery),(x_hyp,y_hyp),math.degrees(angle))
-
-def crop_rect(img, rect):
-    # get the parameter of the small rectangle
-    center, size, angle = rect[0], rect[1], rect[2]
-    center, size = tuple(map(int, center)), tuple(map(int, size))
-
-    # get row and col num in img
-    height, width = img.shape[0], img.shape[1]
-
-    # calculate the rotation matrix
-    M = cv2.getRotationMatrix2D(center, angle, 1)
-    # rotate the original image
-    img_rot = cv2.warpAffine(img, M, (width, height))
-
-    # now rotated rectangle becomes vertical, and we crop it
-    img_crop = cv2.getRectSubPix(img_rot, size, center)
-
-    return img_crop, img_rot
 #return either coords or none
 
 class ImageToCoords:
@@ -118,91 +47,17 @@ class ImageToCoords:
         self.indeces_dict = {}
         self.rotate_count = 0
 
-    def predict(self):
-        return(self.kocr.recognize([read(self.image)]))
+    def predict(self,image):
+        return(self.kocr.recognize([read(image)]))
 
     def rotate_img(self):
         self.image = cv2.rotate(self.image, cv2.ROTATE_90_CLOCKWISE)
         self.rotate_count += 1
     # return list of indeces that correspond to a match, or return none
 
-    def getTrigMetrics(self):
-        angles = [] #angle of box relative to x
-        exps_x = []
-        exps_y = []
-        form_tl_xs = []
-        form_tl_ys = []
-        for p in self.indeces_dict:
-            box = self.predictions[0][self.indeces_dict[p]][1]
-            # hyp = dist = sqrt( (x2 - x1)**2 + (y2 - y1)**2 )
-            y_hyp = math.sqrt((box[3][0] - box[2][0]) ** 2 + (box[3][1] - box[2][1]) ** 2)
-            bc = box[3][1] - box[2][1]
-
-            #if bc != 0:
-             #   code.interact(local=locals())
-
-            # here is angle.
-            angle = math.asin(bc / y_hyp)
-
-            # now need expansion
-            # take the avg of the ratio of current to template
-
-            x_hyp = math.sqrt((box[0][0] - box[3][0]) ** 2 + (box[0][1] - box[3][1]) ** 2)
-
-            yexpansion = y_hyp / (self.voucher_dims_dict["labels"][p][1][0] - self.voucher_dims_dict["labels"][p][0][0])
-            xexpansion = x_hyp / (self.voucher_dims_dict["labels"][p][2][1] - self.voucher_dims_dict["labels"][p][1][1])
-
-            # avg_exp = (yexpansion + xexpansion)/2
-
-            # now using expansion, calculate expected position of tl corner of
-            tl_adj = []
-            tl_adj.append(self.voucher_dims_dict["labels"][p][0][0] * xexpansion)
-            tl_adj.append(self.voucher_dims_dict["labels"][p][0][1] * yexpansion)
-
-            tl_pred = [box[0][0] - tl_adj[0], box[0][1] - tl_adj[1]]
-
-            tl_length = math.sqrt((tl_pred[0] - box[0][0]) ** 2 + (tl_pred[1] - box[0][1]) ** 2)
-            tl_bc = abs(tl_pred[1] - box[0][1])
-
-            ideal_angle = math.asin(tl_bc / tl_length)
-
-            # however, need to account for angle, so, real coordinate will be
-
-            adj_angle = ideal_angle - angle
-
-            tl_pred_w_angle_x = box[0][0] - tl_length * math.cos(adj_angle)
-            tl_pred_w_angle_y = box[0][1] - tl_length * math.sin(adj_angle) #testing: add y instead of minus since flipped
-
-            angles.append(angle)
-            exps_x.append(xexpansion)
-            exps_y.append(yexpansion)
-            form_tl_xs.append(tl_pred_w_angle_x)
-            form_tl_ys.append(tl_pred_w_angle_y)
-
-        #code.interact(local=locals())
-
-
-        #noticing that the behavior of keras ocr is to favor locking boxes to 0, so
-        #fine tuning this to be more responsive to any box angles.
-        if angles.count(0) > len(angles)/2:
-            angles_avg = sum(angles) / len(angles)
-        else:
-            #remove 0s and get median of reported angles.
-            all_angles = [f for f in angles if f != 0]
-            angles_avg = median(angles)
-
-        angles_avg = sum(angles) / len(angles) #should probably not be avg. Perhaps avg if
-        #mostly 0s, but otherwise median.
-        exps_x_avg = sum(exps_x) / len(exps_x)
-        exps_y_avg = sum(exps_x) / len(exps_x)
-        form_tl_xs_avg = sum(form_tl_xs) / len(form_tl_xs)
-        form_tl_ys_avg = sum(form_tl_ys) / len(form_tl_ys)
-
-        return angles_avg,exps_x_avg,exps_y_avg,form_tl_xs_avg,form_tl_ys_avg
-
     def get_coords(self):
 
-        self.predictions = self.predict()
+        self.predictions = self.predict(self.image)
 
         #code.interact(local=locals())
         #assess semantic similarity of each word
@@ -227,31 +82,101 @@ class ImageToCoords:
                 else:
                     return None
             else:
-                print(self.indeces_dict)
-                #this assumes there's bin a hit. Locate the boxes, recreate the full title box, use to predict form
-                #image2 = cv2.resize(self.image, (300, 400))
-                #image2[round(749.1745244224945/10),round(2140.9488217836815/10)]=[0,0,255]
-                # image2[round(2140.9488217836815/10),round(749.1745244224945/10)]=[0,0,255] #this works, exactly as is! Just need to invert when plotting
-                #cv2.imshow('image', image2)
+
+                image2 = self.image.copy()
+
+               # code.interact(local=locals())
+
+                #use homography to correct form.
+
+                #get all discovered translated points and source points
+                pts_translated =[]
+                pts_source = []
+                for i in self.indeces_dict:
+                    index = self.indeces_dict[i]
+                    pts_translated.append(self.predictions[0][index][1])
+
+                    pts_source.append(np.array(self.voucher_dims_dict["labels"][i]))
+
+                pts_translated = np.vstack(pts_translated)
+                pts_source = np.vstack(pts_source)
+
+                # Calculate Homography
+                h, status = cv2.findHomography(pts_translated,pts_source)
+
+                im_out = cv2.warpPerspective(image2, h, (image2.shape[1], image2.shape[0]))
+
+                #loop through each field and crop:
+
+                for m in self.voucher_dims_dict["fields"]:
+                    img_crop = im_out[round(self.voucher_dims_dict['fields'][m][0][1]):round(self.voucher_dims_dict['fields'][m][2][1]),
+                                          round(self.voucher_dims_dict['fields'][m][0][0]):round(self.voucher_dims_dict['fields'][m][1][0])]
+
+                    #rcol = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+                    #for p in range(3):
+                        # code.interact(local=locals())
+                    #    cv2.line(im_out, (round(self.voucher_dims_dict['fields'][m][p][0]),
+                    #                      round(self.voucher_dims_dict['fields'][m][p][1])),
+                    #             (round(self.voucher_dims_dict['fields'][m][(p + 1) % 4][0]),
+                    #              round(self.voucher_dims_dict['fields'][m][(p + 1) % 4][1])), color=rcol,
+                    #             thickness=4)
+                    #now, I can actually just test out other text recognition on the available fields. Try keras ocr again to start.
+
+                    #pred_label = self.predict(img_crop)
+
+                    #also want to save the crop ultimately, so that I can possible train a custom model later.
+                    #code.interact(local=locals())
+                    gray = cv2.cvtColor(img_crop, cv2.COLOR_BGR2GRAY)
+
+                    #_,thresh = cv2.threshold(gray,175,255,cv2.THRESH_BINARY_INV)
+
+                    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+                    #hresh = cv2.cv.adaptiveThreshold(blurred,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C
+
+                    sharpen_kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+                    sharpened = cv2.filter2D(blurred, -1, sharpen_kernel)
+
+
+
+                    #col = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2BGR)
+                    #pred_label = self.predict(col)
+
+                    #this is hot garbage, still. next to try is the huggingface model.
+                    #I don't think it is worth to try individual segmentation of numbers/letters... too much letter
+                    #overlap in the small fields.
+                    pred_label = pytesseract.image_to_string(sharpened,config="--psm 8 -c tessedit_char_whitelist=0123456789") #this is for only numbers -c tessedit_char_whitelist=0123456789
+
+                    col = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2BGR)
+                    print(self.predict(col))
+                    print(pred_label)
+                    #code.interact(local=locals())
+                    #self.voucher_dims_dict["fields"][m]["pred_label"] = pred_label
+
+                    #cv2.imshow(str(pred_label), sharpened)
+                    #cv2.waitKey(500)
+
+                    cv2.imwrite("testout/" + str(time()) + "_" + str(pred_label) + ".jpg", sharpened)
+
+
+
+                #cv2.imwrite(f"testout/{time()} full_img.jpg", im_out)
+
+                    #cv2.imwrite(f"testout/{time()} cropped_img.jpg", img_crop)
+
+                #im_out = cv2.resize(im_out, (600, 800))
+                #cv2.imshow('image', im_out)
                 #cv2.waitKey(0)
 
-                #for each matched label in indeces_dict, run through a standard function and export
-                angles_avg, exps_x_avg, exps_y_avg, form_tl_xs_avg, form_tl_ys_avg = self.getTrigMetrics()
+                #im_out = cv2.resize(im_out, (600, 800))
 
-                self.voucher_dims_dict['fields_adj'] = {}
-                for m in self.voucher_dims_dict['fields']:
-
-                    mod_field = get_mod_field(self.voucher_dims_dict['fields'][m],angles_avg,exps_x_avg, exps_y_avg, form_tl_xs_avg, form_tl_ys_avg)
-
-                    #this adds to shallow copy of dict, does not modify original object
-                    self.voucher_dims_dict['fields_adj'][m] = mod_field
-
-                    #temporary, see how it is doing with angles in general
-                    image2 = self.image.copy()
-                    img_crop, _ = crop_rect(image2, self.voucher_dims_dict['fields_adj'][m])
-                    cv2.imwrite(f"testout/{time.time()} cropped_img.jpg", img_crop)
-
-                #block to visualize field crops
+                #file = open(f"testout/{time.time()} preds.txt", 'w')
+                #json.dump(self.predictions[0], file)
+                #file.close()
+                #cv2.imshow('image', image2)
+                #cv2.moveWindow('image', 40, 30)
+                #cv2.waitKey(0)
+                        #block to visualize field crops
                 #image2 = cv2.resize(self.image, (300, 400))
                 #image2[round(form_tl_ys_avg / 10), round(form_tl_xs_avg / 10)] = [0, 0, 255]
                 #for m in self.voucher_dims_dict['fields_adj']:

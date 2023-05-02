@@ -8,6 +8,18 @@ from threading import Thread
 from time import sleep
 from tkinter import *
 import pytesseract
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+import requests
+
+#load trocr model
+
+#image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
+
+#pixel_values = processor(images=image, return_tensors="pt").pixel_values
+
+
+
+
 
 pytesseract.pytesseract.tesseract_cmd = 'C:/Users/daniel.woodrich/AppData/Local/Programs/Tesseract-OCR/tesseract.exe'
 
@@ -109,10 +121,10 @@ VOUCHER_DIMS_DICT = {"labels": {
        [245.64131, 343.19537]]
 },
                      "fields": {
-                        "vessel":[[18.5*3.745,34*3.705],[40*3.745,34*3.705],[18.5*3.745,40*3.705],[40*3.745,40*3.705]],
-                        "cruise_number": [[55.5*3.745, 34*3.705], [78*3.745, 34*3.705], [55.5*3.745, 40*3.705], [78*3.745, 40*3.705]],
-                        "haul_number": [[94*3.745, 34*3.705], [113*3.745, 34*3.705], [94*3.745, 40*3.705], [113*3.745, 40*3.705]],
-                        "specimen_number": [[37*3.745, 41.5*3.705], [113*3.745, 41.5*3.705], [37*3.745, 47.5*3.705], [113*3.745,47.5*3.705]],
+                        "vessel":[[69.2825,122.97],[149.8,122.97],[69.2825,148.2],[149.8,148.2]],
+                        "cruise_number": [[207.8475, 123.97], [292.11, 123.97], [207.8475, 148.2], [292.11, 148.2]],
+                        "haul_number": [[352, 120.97], [423.185, 120.97], [352, 148.2], [423.185, 148.2]],
+                        "specimen_number": [[138.565, 150.7575], [423.185, 150.7575], [138.565, 175.9875], [423.185, 175.9875]],
                         #"stomach_sample": [[0, 0], [0, 0], [0, 0], [0, 0]],
                         #"tissue_sample": [[0, 0], [0, 0], [0, 0], [0, 0]],
                         #"right_ovary": [[0, 0], [0, 0], [0, 0], [0, 0]],
@@ -120,10 +132,10 @@ VOUCHER_DIMS_DICT = {"labels": {
                         #"whole_animal": [[0, 0], [0, 0], [0, 0], [0, 0]],
                         #"length_cm": [[0, 0], [0, 0], [0, 0], [0, 0]],
                         #"weight_gm": [[0, 0], [0, 0], [0, 0], [0, 0]],
-                        "species_identification": [[46.5*3.745, 67*3.705], [113*3.745, 67*3.705], [46.5*3.745, 72*3.705], [113*3.745, 72*3.705]],
+                        "species_identification": [[174.1425, 242.235], [423.185, 242.235], [174.1425, 270.76], [423.185, 270.76]],
                         #"comments": [[0, 0], [0, 0], [0, 0], [0, 0]],
                         #"colectors_initials": [[0, 0], [0, 0], [0, 0], [0, 0]],
-                        "preservative": [[94*3.745, 86*3.705], [113*3.745, 86*3.705], [94*3.745, 92*3.705], [113*3.745, 92*3.705]]
+                        "preservative": [[352, 318.63], [423.185, 318.63], [352, 340.86], [423.185, 340.86]]
 }}
 
 #data will be stored in a table- read this from file at script start.
@@ -143,6 +155,9 @@ class Program:
 
     def process_images(self):
         self.kocr = keras_ocr.pipeline.Pipeline()
+        self.tr_ocr_processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
+        self.trocr = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
+
         for n in range(len(self.image_to_go)):
             self.process_image(n)
 
@@ -154,7 +169,7 @@ class Program:
         print(focal_img)
 
         #populates data needed for review method
-        imagetocoords= ImageToCoords(self.kocr,focal_img,VOUCHER_DIMS,VOUCHER_DIMS_DICT)
+        imagetocoords= ImageToCoords(self.kocr,self.tr_ocr_processor,self.trocr,focal_img,VOUCHER_DIMS,VOUCHER_DIMS_DICT)
 
         #do it
         imagetocoords.get_coords()

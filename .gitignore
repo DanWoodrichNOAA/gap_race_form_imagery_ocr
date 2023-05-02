@@ -3,4 +3,4 @@ venv
 .idea
 __pycache__
 data.csv
-testout_cropsave
+testout_cropssave

@@ -3,8 +3,10 @@ import code
 import cv2
 import numpy as np
 from time import time
-import random
 import pytesseract
+import torchvision.transforms as transforms
+
+
 
 #use keras ocr to locate text in image
 #use semantic similarity algorithm to locate title text
@@ -37,18 +39,47 @@ def simple_semantic(word1,word2):
 
 class ImageToCoords:
 
-    def __init__(self,kocr,image,voucher_dims,voucher_dims_dict):
+    def __init__(self,kocr,tr_ocr_processor,trocr,image,voucher_dims,voucher_dims_dict):
         self.image_name = image
         self.image = cv2.imread(image)
         self.kocr = kocr
+        self.trocr = trocr
+        self.tr_ocr_processor = tr_ocr_processor
         self.voucher_dims = voucher_dims
         self.voucher_dims_dict = voucher_dims_dict.copy()
         self.semvecs_threshold = 1
         self.indeces_dict = {}
         self.rotate_count = 0
 
+
     def predict(self,image):
         return(self.kocr.recognize([read(image)]))
+
+    def predict_trocr(self,image):
+
+        #add border, or
+        #image = cv2.copyMakeBorder(image, 0, 384-image.shape[0], 0, 384-image.shape[1], cv2.BORDER_CONSTANT)
+        #resize
+        image = cv2.resize(image, (384,384), interpolation = cv2.INTER_AREA)
+        #both
+        #code.interact(local=locals())
+        #upscale_perc =384/image.shape[1]
+
+        #image = cv2.resize(image, (int(image.shape[1]*upscale_perc), int(image.shape[0]*upscale_perc)), interpolation=cv2.INTER_AREA)
+        #image = cv2.copyMakeBorder(image, 0, 384 - image.shape[0], 0, 0, cv2.BORDER_CONSTANT)
+
+        #code.interact(local=locals())
+
+        transform = transforms.ToTensor()
+        # Convert the image to PyTorch tensor
+        tensor = transform(image)
+
+        tensor = tensor[None,:]
+
+        generated_ids = self.trocr.generate(tensor)
+        generated_text = self.tr_ocr_processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        #
+        return(generated_text)
 
     def rotate_img(self):
         self.image = cv2.rotate(self.image, cv2.ROTATE_90_CLOCKWISE)
@@ -128,16 +159,19 @@ class ImageToCoords:
                     #code.interact(local=locals())
                     gray = cv2.cvtColor(img_crop, cv2.COLOR_BGR2GRAY)
 
+                    kernel = np.ones((1, 40), np.uint8)
+                    morphed = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+
+                    dst = cv2.add(gray, (255 - morphed))
+
                     #_,thresh = cv2.threshold(gray,175,255,cv2.THRESH_BINARY_INV)
 
-                    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+                    blurred = cv2.GaussianBlur(dst, (5, 5), 0)
 
                     #hresh = cv2.cv.adaptiveThreshold(blurred,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C
 
                     sharpen_kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
                     sharpened = cv2.filter2D(blurred, -1, sharpen_kernel)
-
-
 
                     #col = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2BGR)
                     #pred_label = self.predict(col)
@@ -145,18 +179,37 @@ class ImageToCoords:
                     #this is hot garbage, still. next to try is the huggingface model.
                     #I don't think it is worth to try individual segmentation of numbers/letters... too much letter
                     #overlap in the small fields.
-                    pred_label = pytesseract.image_to_string(sharpened,config="--psm 8 -c tessedit_char_whitelist=0123456789") #this is for only numbers -c tessedit_char_whitelist=0123456789
+                    tempname = "testout/" + str(time()) + ".jpg"
+
+                    print("name " + tempname)
+
+                    print("tesseract result:")
+                    pred_label = pytesseract.image_to_string(sharpened,config="--psm 8 -c tessedit_char_whitelist=0123456789") #-c tessedit_char_whitelist=0123456789") #this is for only numbers -c tessedit_char_whitelist=0123456789
+                    #pred_label = pytesseract.image_to_string(sharpened)
+                    print(pred_label)
 
                     col = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2BGR)
-                    print(self.predict(col))
-                    print(pred_label)
+
+                    #code.interact(local=locals())
+                    print('keras ocr result:')
+                    outlabs =self.predict(col)[0]
+
+                    if len(outlabs)==0:
+                        print(outlabs)
+                    else:
+                        print(outlabs[0][0])
+
+                    print("trocr result:")
+                    #code.interact(local=locals())
+                    print(self.predict_trocr(col)) #torch.from_numpy(
+
                     #code.interact(local=locals())
                     #self.voucher_dims_dict["fields"][m]["pred_label"] = pred_label
 
-                    #cv2.imshow(str(pred_label), sharpened)
+                    #cv2.imshow("out", sharpened)
                     #cv2.waitKey(500)
 
-                    cv2.imwrite("testout/" + str(time()) + "_" + str(pred_label) + ".jpg", sharpened)
+                    cv2.imwrite(tempname, col)
 
 
 

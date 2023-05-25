@@ -4,3 +4,4 @@ venv
 __pycache__
 data.csv
 testout_cropssave
+training_data

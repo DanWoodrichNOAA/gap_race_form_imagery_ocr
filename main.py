@@ -194,6 +194,8 @@ class Program:
         #use verified vessel as a proxy
         self.cur_ind = self.data.verified_vessel.isna().idxmin()-1
 
+        #self.cur_encountered = []
+
         # code.interact(local=locals())
         #self.image_advance()
 
@@ -304,8 +306,17 @@ class Program:
         self.collector_initials_entry.grid(row=13, column=1, padx=5)
         self.preservative_entry.grid(row=14, column=1, padx=5)
 
-        self.save_button = tk.Button(fields_frame, text="Save", command=self.save_data)
-        self.save_button.grid(row=15, column=1, pady=10)
+        data_buttons_frame = tk.Frame(top_right_frame)
+        data_buttons_frame.pack()
+
+        self.from_last_button = tk.Button(data_buttons_frame, text="Last", command=self.populate_from_last)
+        self.from_last_button.grid(row=0, column=0, padx=5)
+
+        self.clear_data_button = tk.Button(data_buttons_frame, text="Clear", command=self.clear_data)
+        self.clear_data_button.grid(row=0, column=1, padx=5)
+
+        self.save_button = tk.Button(data_buttons_frame, text="Save", command=self.save_data)
+        self.save_button.grid(row=0, column=2, padx=5)
 
         window.bind("<Down>", lambda e: self.image_cycle(e,-1))
         window.bind("<Up>", lambda e: self.image_cycle(e,1))
@@ -318,6 +329,7 @@ class Program:
         window.bind("<Control-Left>", self.go_to_last_voucher)
         window.bind("<Control-Right>", self.refresh_voucher)
         window.bind("<Control-l>", self.toggle_lock)
+        window.bind("<Control-w>", self.clear_data)
 
         self.image_cycle("start",1)
 
@@ -491,7 +503,18 @@ class Program:
         else:
 
             self.refresh_full_image()
-            self.refresh_data(self.cur_ind)
+
+            #test if image is predicted to be same voucher, if so preload it. only do it in forward direction.
+            if self.cur_ind > 0 and direction == 1: #and self.cur_ind not in self.cur_encountered
+                #print(self.data.loc[self.cur_ind-1,"voucher_id"])
+                #print(self.data.loc[self.cur_ind, "voucher_id"])
+                if self.data.loc[self.cur_ind-1,"voucher_id"] == self.data.loc[self.cur_ind,"voucher_id"] and pd.isna(self.data.loc[self.cur_ind,"verified_vessel"]):
+                    self.refresh_data(self.cur_ind-1)
+                    self.save_button.config(text="Autofilled... Save")
+                else:
+                    self.refresh_data(self.cur_ind)
+            else:
+                self.refresh_data(self.cur_ind)
 
             if not self.lock_voucher:
                 #code.interact(local=locals())
@@ -499,6 +522,8 @@ class Program:
                 if not self.data["voucher_id"].iloc[[self.cur_ind]].isna().bool():
                     #print("didit")
                     self.refresh_voucher("automatic",self.cur_ind)
+
+        #self.cur_encountered.append(self.cur_ind)
 
     def save_data(self,event="default"):
 
@@ -522,7 +547,7 @@ class Program:
 
         self.save_button.config(text="Saved!")
 
-    def hard_save_data(self,event):
+    def hard_save_data(self,event="default"):
 
         self.save_data()
 
@@ -576,13 +601,40 @@ class Program:
                 #retain memory of which voucher is currently displayed.
                 self.voucher_img_id = deepcopy(ind)
 
-    def populate_from_voucher(self):
-        pass
+    def populate_from_voucher(self,event="default"):
+
+        #populate based on the index of the current voucher.
+
+        self.refresh_data(self.voucher_img_id)
+
         # this will fill in current values with those matching the current voucher in the voucher pane.
 
-    def populate_from_last(self):
-        pass
+    def populate_from_last(self,event="default"):
+
+        #this will take from the last voucher that matches current one.
+
+        if self.cur_ind !=0:
+            self.refresh_data(self.cur_ind-1)
+
         # this will fill in current values with those from the very last full image
+
+    def clear_data(self,event="default"):
+
+        self.vessel_entry.delete(0, tk.END)
+        self.cruise_number_entry .delete(0, tk.END)
+        self.haul_number_entry.delete(0, tk.END)
+        self.specimen_number_entry .delete(0, tk.END)
+        self.stomach_sample_entry.delete(0, tk.END)
+        self.tissue_sample_entry .delete(0, tk.END)
+        self.right_ovary_entry.delete(0, tk.END)
+        self.left_ovary_entry .delete(0, tk.END)
+        self.whole_animal_entry.delete(0, tk.END)
+        self.length_cm_entry .delete(0, tk.END)
+        self.weight_gm_entry.delete(0, tk.END)
+        self.species_identification_entry .delete(0, tk.END)
+        self.comments_entry.delete(0, tk.END)
+        self.collector_initials_entry .delete(0, tk.END)
+        self.preservative_entry.delete(0, tk.END)
 
     #if I run into performance issues, I can try feeding chunks of images to pipeline, perhaps asynchronously
     def run(self):

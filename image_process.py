@@ -8,6 +8,7 @@ import random
 import torchvision.transforms as transforms
 import os
 import matplotlib.pyplot as plt
+from Levenshtein import distance as lev
 
 
 
@@ -219,7 +220,8 @@ class ImageToData:
             for m in self.voucher_dims_dict["labels"]:
                 lexical_vec = []
                 for p in self.labs:
-                    lexical_vec.append(simple_lexical(m, p))
+                    #lexical_vec.append(simple_lexical(m, p)) #this was a custom algorithm, trying a more conventional one
+                    lexical_vec.append(lev(m, p))
                     lexical_vec_min = min(lexical_vec)
                     #check that min is unique, and that min is below threshold
                     if lexical_vec.count(lexical_vec_min) == 1 and lexical_vec_min <= self.semvecs_threshold:

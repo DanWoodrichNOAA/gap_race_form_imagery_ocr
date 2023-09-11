@@ -1,17 +1,28 @@
 import os
 import pandas as pd
 from misc import is_img
-from image_process import ImageToData
-import keras_ocr
 import matplotlib.pyplot as plt
 from threading import Thread
 from time import sleep
 import tkinter as tk
-import pytesseract
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 from copy import deepcopy
 from PIL import ImageTk, Image
 import code
+import pathlib
+
+#---
+#libraries for img processing (turn on when using)
+
+#from image_process import ImageToData
+#import keras_ocr
+#import pytesseract
+#from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+
+#pytesseract.pytesseract.tesseract_cmd = 'C:/Users/daniel.woodrich/AppData/Local/Programs/Tesseract-OCR/tesseract.exe'
+
+#---
+
+import cv2
 
 #load trocr model
 
@@ -19,11 +30,7 @@ import code
 
 #pixel_values = processor(images=image, return_tensors="pt").pixel_values
 
-
-
-
-
-pytesseract.pytesseract.tesseract_cmd = 'C:/Users/daniel.woodrich/AppData/Local/Programs/Tesseract-OCR/tesseract.exe'
+#tmp off
 
 #voucher dimensions (10px):
 #this will be used to reference relative coordinates of different fields
@@ -31,15 +38,18 @@ pytesseract.pytesseract.tesseract_cmd = 'C:/Users/daniel.woodrich/AppData/Local/
 VOUCHER_DIMS = [[0,0],[442,0],[0,352],[442,352]]
 
 #make this more customizable later
-IMAGEDIR = "Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3"
-#IMAGEDIR = "Y:/RACE_Imagery/Field_Photos/EBSshelf2021/Vesteraalen/Leg3/EBS"
-#IMAGEDIR =  "C:/Users/daniel.woodrich/Work/Data mgmt coord/Projects/Race_data_reco/testphotos"
-IMAGEFILES = os.listdir(IMAGEDIR)
-
-#IMAGEDIR = "C:/Users/daniel.woodrich/Pictures"
+#IMAGEDIR = "Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3"
+IMAGEDIR = "Y:/RACE_Imagery/Field_Photos"
 #IMAGEFILES = os.listdir(IMAGEDIR)
+#IMAGEFILES = [IMAGEDIR + "/" + f for f in IMAGEFILES if is_img(f)]
+IMAGEDIR = pathlib.Path(IMAGEDIR)
+IMAGEFILES=list(IMAGEDIR.rglob("*.[jJ][pP][gG]")) #[png][gif][jpg][JPG][jpeg]
 
-IMAGEFILES = [IMAGEDIR + "/" + f for f in IMAGEFILES if is_img(f)]
+IMAGEFILES = [str(f) for f in IMAGEFILES]
+
+#code.interact(local=locals())
+
+#make the IMAGEFILES correspond to all of the
 
 #one static dictionary that will store the label field coordinates
 
@@ -189,6 +199,7 @@ class Program:
 
         #also, have different threaded process running to present data ready (reviewed column 0) to review to user
     #kind of annoying but will have to independently assign all tkinter label methods in this style.
+
     def review_data(self):
 
         #use verified vessel as a proxy
@@ -219,7 +230,12 @@ class Program:
         cropped_buttons_frame.pack()
 
         self.full_image_label = tk.Label(left_frame)
-        self.full_image_label.pack()
+        #self.full_image_label.place(anchor = tk.NW)
+
+        self.full_image_label.pack(anchor = tk.NW)
+
+        self.refresh_button = tk.Button(left_frame, text="zoom/rotate", command=lambda: self.full_image_zoom(window))
+        self.refresh_button.place(anchor = tk.NW)
 
         last_cropped_image_button = tk.Button(cropped_buttons_frame, text="Previous voucher",
                                               command=self.go_to_last_voucher)
@@ -335,10 +351,59 @@ class Program:
 
         window.mainloop()
 
+    def rotate_zoom(self,event ='default',direction=-1):
+
+        self.full_image_og = self.full_image_og.rotate(90*direction)
+
+        full_image_tk = ImageTk.PhotoImage(self.full_image_og)
+
+        #self.zoom_img.create_image(0, 0, image=full_image_tk, anchor="nw")
+        self.zoom_img.config(image=full_image_tk)
+        self.zoom_img.image = full_image_tk
+
+    def full_image_zoom(self,window):
+        zoom_window = tk.Toplevel(window)
+
+        # sets the title of the
+        # Toplevel widget
+        zoom_window.title("Full image")
+
+        # sets the geometry of toplevel
+        #full_image_tk = ImageTk.PhotoImage(Image.open(self.data["image_fullpath"][self.cur_ind]))
+        full_image_tk = ImageTk.PhotoImage(self.full_image_og)
+
+        left_frame = tk.Frame(zoom_window)
+
+        left_frame.grid(row=0, column=0, sticky="nsew")#, sticky="nsew")
+
+        #self.zoom_img = tk.Canvas(left_frame, height=0, width = 0)
+        #self.zoom_img.pack()
+        #self.zoom_img.create_image(0,0,image=full_image_tk, anchor="nw")
+
+        self.zoom_img = tk.Label(left_frame, image=full_image_tk)
+        self.zoom_img.pack()
+        self.zoom_img.image = full_image_tk
+
+        self.rotate_button = tk.Button(left_frame, text="rotate", command = self.rotate_zoom)
+        self.rotate_button.place(anchor=tk.NW)
+
+        zoom_window.bind("<Down>", lambda e: self.rotate_zoom(e,1))
+        zoom_window.bind("<Left>", lambda e: self.rotate_zoom(e, 1))
+        zoom_window.bind("<Up>", lambda e: self.rotate_zoom(e,-1))
+        zoom_window.bind("<Right>", lambda e: self.rotate_zoom(e, -1))
+
+        data_string = tk.StringVar()
+        data_string.set(self.data["image_fullpath"][self.cur_ind].replace("/","\\"))
+        ent = tk.Entry(zoom_window, textvariable=data_string, fg="black", bg="white", bd=0, state="readonly")
+        ent.grid(row=1, column=0, sticky="ew")
+        #ent.pack(anchor=tk.W)
+
+        #tk.Label(left_frame, text=self.data["image_fullpath"][self.cur_ind]).pack(anchor=tk.W)
+
     def refresh_full_image(self):
         image_path = self.data["image_fullpath"][self.cur_ind]  # Replace with your image path
-        full_image = Image.open(image_path)
-        full_image = full_image.resize((450, 450))  # Adjust the size as needed
+        self.full_image_og = Image.open(image_path)
+        full_image = self.full_image_og.resize((450, 450))  # Adjust the size as needed
         full_image_tk = ImageTk.PhotoImage(full_image)
 
         self.full_image_label.config(image=full_image_tk)

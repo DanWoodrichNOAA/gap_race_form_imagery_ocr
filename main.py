@@ -1,6 +1,7 @@
 import os
 import pandas as pd
-from misc import is_img
+import numpy as np
+from misc import is_img, CreateToolTip
 import matplotlib.pyplot as plt
 from threading import Thread
 from time import sleep
@@ -13,14 +14,31 @@ import pathlib
 #---
 #libraries for img processing (turn on when using)
 
-#from image_process import ImageToData
-#import keras_ocr
-#import pytesseract
-#from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+from image_process import ImageToData
+import keras_ocr
+import pytesseract
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
-#pytesseract.pytesseract.tesseract_cmd = 'C:/Users/daniel.woodrich/AppData/Local/Programs/Tesseract-OCR/tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = 'C:/Users/daniel.woodrich/AppData/Local/Programs/Tesseract-OCR/tesseract.exe'
+
+#parameter to turn on and off label prediction
+PREDICT_FIELDS = True
 
 #---
+
+#paramters to change:
+
+mode = 'review'
+#DATAPATH = "data_base.csv" #this was processed from the source path: "Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3" . using base ocr model
+DATAPATH = "data_largetrocr.csv"
+#training data is saved in
+#DATAPATH = "data_all.csv" #this applies to all imagery, but starts on a cruise from the 2000s.
+
+#make this more customizable later
+IMAGEDIR = "Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3"
+#IMAGEDIR = "Y:/RACE_Imagery/Field_Photos"
+
+#when changing data source, make sure to rename training data correctly (for now).
 
 import cv2
 
@@ -37,9 +55,8 @@ import cv2
 #VOUCHER_DIMS = [[0,0],[118,0],[0,95],[118,95]]
 VOUCHER_DIMS = [[0,0],[442,0],[0,352],[442,352]]
 
-#make this more customizable later
-#IMAGEDIR = "Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3"
-IMAGEDIR = "Y:/RACE_Imagery/Field_Photos"
+
+
 #IMAGEFILES = os.listdir(IMAGEDIR)
 #IMAGEFILES = [IMAGEDIR + "/" + f for f in IMAGEFILES if is_img(f)]
 IMAGEDIR = pathlib.Path(IMAGEDIR)
@@ -103,28 +120,64 @@ VOUCHER_DIMS_DICT = {"labels": {
 }}
 
 #data will be stored in a table- read this from file at script start.
-DATAPATH = "data.csv"
-DATA_KEYS = {"id":None,"voucher_id":None,"image_fullpath":None,"image_croppath":None,"pred_vessel":None,"pred_cruise_number":None,
-             "pred_haul_number":None,"pred_specimen_number":None,"pred_stomach_sample":None,"pred_tissue_sample":None,"pred_right_ovary":None,
+
+DATA_KEYS = {"id":None,"voucher_id":None,"image_fullpath":None,"image_croppath":None,"pred_vessel":None,"pred_cruise_num":None,
+             "pred_haul_num":None,"pred_specimen_num":None,"pred_stomach_sample":None,"pred_tissue_sample":None,"pred_right_ovary":None,
             "pred_left_ovary":None,"pred_whole_animal":None,"pred_length_cm":None,"pred_weight_gm":None,"pred_species_identification":None,
-            "pred_comments":None,"pred_collector_initials":None,"pred_preservative":None,"verified_vessel":None,"verified_cruise_number":None,"verified_haul_number":None,
-            "verified_specimen_number":None,"verified_stomach_sample":None,"verified_tissue_sample":None,"verified_right_ovary":None,"verified_left_ovary":None,
+            "pred_comments":None,"pred_collector_initials":None,"pred_preservative":None,"verified_vessel":None,"verified_cruise_num":None,"verified_haul_num":None,
+            "verified_specimen_num":None,"verified_stomach_sample":None,"verified_tissue_sample":None,"verified_right_ovary":None,"verified_left_ovary":None,
             "verified_whole_animal":None,"verified_length_cm":None,	"verified_weight_gm":None,"verified_species_identification":None,"verified_comments":None,
             "verified_collector_initials":None,	"verified_preservative":None
 }
 
-#parameter to turn on and off label prediction
-PREDICT_FIELDS = False
+FIELD_NAMES_APP = ["VESSEL","CRUISE NUMBER","HAUL NUMBER","SPECIMEN NUMBER","STOMACH SAMPLE",
+                   "TISSUE SAMPLE","RIGHT OVARY","LEFT OVARY","WHOLE ANIMAL","LENGTH (CM)",
+                   "WEIGHT (GM)","SPECIES IDENTIFICATION","COMMENTS","COLLECTOR'S INITIALS",
+                   "PRESERVATIVE"]
+FIELD_NAMES_DATA = ["vessel","cruise_num","haul_num","specimen_num","stomach_sample","tissue_sample",
+                    "right_ovary","left_ovary","whole_animal","length_cm","weight_gm","species_identification",
+                    "comments","collector_initials","preservative"]
+
+class FormField():
+
+    def __init__(self,frame,labtext,datalab,labnum):
+        #super().__init__(*args, **kwargs)
+        self.label = tk.Label(frame, text=labtext).grid(row=labnum, column=0, sticky="w")
+        self.entry = tk.Entry(frame)
+        self.entry.grid(row=labnum, column=1, padx=5)
+        self.pred_labname = "pred_" + datalab
+        self.verified_labname = "verified_" + datalab
+
+    #compare to pred_correct_dict and dissalowed keys here:
+    def refresh_entry(self,cur_data,pop_predictions,pred_correct_dict,disallowed_keys):
+        #print(cur_data[self.pred_labname])
+        self.entry.delete(0, tk.END)
+        #if cur_data[self.verified_labname].isna().bool():
+        if (cur_data[self.verified_labname]=="").bool():
+            #if not cur_data[self.pred_labname].isna().bool() and pop_predictions:
+            if not (cur_data[self.pred_labname]=="").bool() and pop_predictions:
+                if cur_data.loc[0,self.pred_labname] in pred_correct_dict and cur_data.loc[0,self.pred_labname] not in disallowed_keys:
+                    pred = pred_correct_dict[cur_data.loc[0,self.pred_labname]]
+                else:
+                    pred = cur_data.loc[0,self.pred_labname]
+
+                self.entry.insert(0, pred)
+            else:
+                self.entry.insert(0, "")
+        else:
+            self.entry.insert(0, cur_data.loc[0,  self.verified_labname])
 
 class Program:
 
     #can make this more specific to describe images needing processed as well as analyzed.
-    def __init__(self,images_in,data_in,datakeys):
+    def __init__(self,images_in,data_in,datakeys,field_names_app,field_names_data):
         #once have some data, do
         self.datakeys = datakeys
         self.datapath = data_in
+        self.field_names_app = field_names_app
+        self.field_names_data = field_names_data
         #code.interact(local=locals())
-        self.data = pd.read_csv(data_in)
+        self.data = pd.read_csv(data_in, dtype = str,keep_default_na=False)
         if self.data.empty:
             self.image_to_go = images_in
         else:
@@ -147,11 +200,51 @@ class Program:
         if self.max_row_id != self.max_row_id:
             self.max_row_id = 1
 
+        #create a hashset of dissalowed keys
+        self.disallowed_keys = set()
+
+        #create a dict of predicted and verified responses
+        self.pred_correct_dict = {}
+
+        for i in range(len(self.data)):
+            row = self.data.iloc[[i]].reset_index(drop=True)
+            self.populate_pred_lookup(row)
+
+
+        #print(self.pred_correct_dict)
+        #print(self.disallowed_keys)
+
+    def populate_pred_lookup(self,row):
+
+        #print(row)
+        #print(row.dtypes)
+
+        for m in self.field_names_data:
+            v_ans=row.loc[0,"verified_" + m]
+            p_ans=row.loc[0,"pred_" + m]
+
+            #v_ans = row["verified_" + m].values
+            #p_ans = row["pred_" + m].values
+            #print(type(v_ans))
+            # only assess if row has verified answers, and is not in dissalowed keys
+            if not v_ans=="" and p_ans not in self.disallowed_keys:
+                if p_ans != v_ans:
+                    # add to pred correct dict
+                    self.pred_correct_dict[p_ans] = v_ans
+                else:
+                    # if the prediction was ever correct, allow it to show up again
+                    self.disallowed_keys.add(p_ans)
+
+        #print(self.pred_correct_dict)
+        #print(self.disallowed_keys)
 
     def process_images(self):
         self.kocr = keras_ocr.pipeline.Pipeline()
-        self.tr_ocr_processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
-        self.trocr = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
+        #self.tr_ocr_processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
+        #elf.trocr = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
+
+        self.tr_ocr_processor = TrOCRProcessor.from_pretrained('microsoft/trocr-large-handwritten')
+        self.trocr = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-large-handwritten')
 
         for n in range(len(self.image_to_go)):
             self.process_image(n)
@@ -189,21 +282,11 @@ class Program:
         #save data to csv. if max_voucher_id is none, change it to NA (no voucher present). still good to document
         #for future discovery.
 
-
-
-
-        #after this runs, register image as having been completed.
-
-        #from this initiate two proceses. 1- loop through fields and send to hugging face algo to
-        #predict data present. save these in data, with reviewed column set to 0
-
-        #also, have different threaded process running to present data ready (reviewed column 0) to review to user
-    #kind of annoying but will have to independently assign all tkinter label methods in this style.
-
     def review_data(self):
 
         #use verified vessel as a proxy
-        self.cur_ind = self.data.verified_vessel.isna().idxmin()-1
+        #self.cur_ind = self.data.verified_vessel.isna().idxmin()-1
+        self.cur_ind = (self.data.verified_vessel=="").idxmin() - 1
 
         #self.cur_encountered = []
 
@@ -211,6 +294,7 @@ class Program:
         #self.image_advance()
 
         self.lock_voucher = False
+        self.pop_predictions = True
 
         # create root window
         window = tk.Tk()
@@ -234,21 +318,29 @@ class Program:
 
         self.full_image_label.pack(anchor = tk.NW)
 
-        self.refresh_button = tk.Button(left_frame, text="zoom/rotate", command=lambda: self.full_image_zoom(window))
-        self.refresh_button.place(anchor = tk.NW)
+        self.zoom_rotate_button = tk.Button(left_frame, text="zoom/rotate", command=lambda: self.full_image_zoom(window))
+        self.zoom_rotate_button.place(anchor = tk.NW)
 
-        last_cropped_image_button = tk.Button(cropped_buttons_frame, text="Previous voucher",
+        self.last_cropped_image_button = tk.Button(cropped_buttons_frame, text="Previous voucher",
                                               command=self.go_to_last_voucher)
-        last_cropped_image_button.grid(row=0, column=0)
+        self.last_cropped_image_button.grid(row=0, column=0)
+
+        CreateToolTip(self.last_cropped_image_button, text='Shortcut: Control-Right key')
 
         self.refresh_button = tk.Button(cropped_buttons_frame, text="Latest voucher", command=self.refresh_voucher)
         self.refresh_button.grid(row=0, column=1)
 
+        CreateToolTip(self.refresh_button, text='Shortcut: Control-Left key')
+
         self.lock_button = tk.Button(cropped_buttons_frame, text="Lock voucher", command=self.toggle_lock)
         self.lock_button.grid(row=1, column=0)
 
+        CreateToolTip(self.lock_button, text='Shortcut: Control-L')
+
         self.populate_button = tk.Button(cropped_buttons_frame, text="Populate from voucher", command=self.populate_from_voucher)
         self.populate_button.grid(row=1, column=1)
+
+        CreateToolTip(self.populate_button, text='Shortcut: Control-P')
 
         self.voucher_label = tk.Label(top_right_frame)
         self.voucher_label.pack()
@@ -256,71 +348,8 @@ class Program:
         fields_frame = tk.Frame(top_right_frame)
         fields_frame.pack()
 
-        # Create the static labels
-        #voucher_id_label = tk.Label(top_right_frame, text="Voucher ID:")
-        #species_name_label = tk.Label(top_right_frame, text="Species Name:")
-        self.vessel_label = tk.Label(fields_frame, text="VESSEL")
-        self.cruise_number_label = tk.Label(fields_frame, text="CRUISE NUMBER")
-        self.haul_number_label = tk.Label(fields_frame, text="HAUL NUMBER")
-        self.specimen_number_label = tk.Label(fields_frame, text="SPECIMEN NUMBER")
-        self.stomach_sample_label = tk.Label(fields_frame, text="STOMACH SAMPLE")
-        self.tissue_sample_label = tk.Label(fields_frame, text="TISSUE SAMPLE")
-        self.right_ovary_label = tk.Label(fields_frame, text="RIGHT OVARY")
-        self.left_ovary_label = tk.Label(fields_frame, text="LEFT OVARY")
-        self.whole_animal_label = tk.Label(fields_frame, text="WHOLE ANIMAL")
-        self.length_cm_label = tk.Label(fields_frame, text="LENGTH (CM)")
-        self.weight_gm_label = tk.Label(fields_frame, text="WEIGHT (GM)")
-        self.species_identification_label = tk.Label(fields_frame, text="SPECIES IDENTIFICATION")
-        self.comments_label = tk.Label(fields_frame, text="COMMENTS")
-        self.collector_initials_label = tk.Label(fields_frame, text="COLLECTOR'S INITIALS")
-        self.preservative_label = tk.Label(fields_frame, text="PRESERVATIVE")
-        self.vessel_label.grid(row=0, column=0, sticky="w")
-        self.cruise_number_label.grid(row=1, column=0, sticky="w")
-        self.haul_number_label.grid(row=2, column=0, sticky="w")
-        self.specimen_number_label.grid(row=3, column=0, sticky="w")
-        self.stomach_sample_label.grid(row=4, column=0, sticky="w")
-        self.tissue_sample_label.grid(row=5, column=0, sticky="w")
-        self.right_ovary_label.grid(row=6, column=0, sticky="w")
-        self.left_ovary_label.grid(row=7, column=0, sticky="w")
-        self.whole_animal_label.grid(row=8, column=0, sticky="w")
-        self.length_cm_label.grid(row=9, column=0, sticky="w")
-        self.weight_gm_label.grid(row=10, column=0, sticky="w")
-        self.species_identification_label.grid(row=11, column=0, sticky="w")
-        self.comments_label.grid(row=12, column=0, sticky="w")
-        self.collector_initials_label.grid(row=13, column=0, sticky="w")
-        self.preservative_label.grid(row=14, column=0, sticky="w")
-
-        # Create the entry fields
-        self.vessel_entry = tk.Entry(fields_frame)
-        self.cruise_number_entry  = tk.Entry(fields_frame)
-        self.haul_number_entry = tk.Entry(fields_frame)
-        self.specimen_number_entry  = tk.Entry(fields_frame)
-        self.stomach_sample_entry = tk.Entry(fields_frame)
-        self.tissue_sample_entry  = tk.Entry(fields_frame)
-        self.right_ovary_entry = tk.Entry(fields_frame)
-        self.left_ovary_entry  = tk.Entry(fields_frame)
-        self.whole_animal_entry = tk.Entry(fields_frame)
-        self.length_cm_entry  = tk.Entry(fields_frame)
-        self.weight_gm_entry = tk.Entry(fields_frame)
-        self.species_identification_entry  = tk.Entry(fields_frame)
-        self.comments_entry = tk.Entry(fields_frame)
-        self.collector_initials_entry  = tk.Entry(fields_frame)
-        self.preservative_entry = tk.Entry(fields_frame)
-        self.vessel_entry.grid(row=0, column=1, padx=5)
-        self.cruise_number_entry.grid(row=1, column=1, padx=5)
-        self.haul_number_entry.grid(row=2, column=1, padx=5)
-        self.specimen_number_entry.grid(row=3, column=1, padx=5)
-        self.stomach_sample_entry.grid(row=4, column=1, padx=5)
-        self.tissue_sample_entry.grid(row=5, column=1, padx=5)
-        self.right_ovary_entry.grid(row=6, column=1, padx=5)
-        self.left_ovary_entry.grid(row=7, column=1, padx=5)
-        self.whole_animal_entry.grid(row=8, column=1, padx=5)
-        self.length_cm_entry.grid(row=9, column=1, padx=5)
-        self.weight_gm_entry.grid(row=10, column=1, padx=5)
-        self.species_identification_entry.grid(row=11, column=1, padx=5)
-        self.comments_entry.grid(row=12, column=1, padx=5)
-        self.collector_initials_entry.grid(row=13, column=1, padx=5)
-        self.preservative_entry.grid(row=14, column=1, padx=5)
+        self.fields = [FormField(fields_frame,self.field_names_app[i],
+                                        self.field_names_data[i],i) for i in range(len(self.field_names_data))]
 
         data_buttons_frame = tk.Frame(top_right_frame)
         data_buttons_frame.pack()
@@ -328,11 +357,23 @@ class Program:
         self.from_last_button = tk.Button(data_buttons_frame, text="Last", command=self.populate_from_last)
         self.from_last_button.grid(row=0, column=0, padx=5)
 
+        CreateToolTip(self.from_last_button, text='Shortcut: Control-R')
+
+        self.pop_predictions_button = tk.Button(data_buttons_frame, text="Predictions", command=self.toggle_pop_predictions)
+        self.pop_predictions_button.grid(row=0, column=1, padx=5)
+        self.pop_predictions_button.config(relief=tk.SUNKEN)
+
+        CreateToolTip(self.pop_predictions_button, text='Shortcut: Control-O')
+
         self.clear_data_button = tk.Button(data_buttons_frame, text="Clear", command=self.clear_data)
-        self.clear_data_button.grid(row=0, column=1, padx=5)
+        self.clear_data_button.grid(row=0, column=2, padx=5)
+
+        CreateToolTip(self.clear_data_button, text='Shortcut: Control-W')
 
         self.save_button = tk.Button(data_buttons_frame, text="Save", command=self.save_data)
-        self.save_button.grid(row=0, column=2, padx=5)
+        self.save_button.grid(row=0, column=3, padx=5)
+
+        CreateToolTip(self.save_button, text='Shortcut: Enter key\nShortcut hard save (write to csv): Control-S')
 
         window.bind("<Down>", lambda e: self.image_cycle(e,-1))
         window.bind("<Up>", lambda e: self.image_cycle(e,1))
@@ -345,7 +386,9 @@ class Program:
         window.bind("<Control-Left>", self.go_to_last_voucher)
         window.bind("<Control-Right>", self.refresh_voucher)
         window.bind("<Control-l>", self.toggle_lock)
+        window.bind("<Control-o>", self.toggle_pop_predictions)
         window.bind("<Control-w>", self.clear_data)
+
 
         self.image_cycle("start",1)
 
@@ -353,9 +396,15 @@ class Program:
 
     def rotate_zoom(self,event ='default',direction=-1):
 
-        self.full_image_og = self.full_image_og.rotate(90*direction)
+        self.rotate_count += direction
 
-        full_image_tk = ImageTk.PhotoImage(self.full_image_og)
+        timg = self.full_image_og.copy()
+
+        timg = timg.resize((self.zwidth,self.zheight)).rotate(90*self.rotate_count,expand=True)
+
+        #self.full_image_og = self.full_image_og.resize((self.zwidth,self.zheight)).rotate(90*direction)
+
+        full_image_tk = ImageTk.PhotoImage(timg)
 
         #self.zoom_img.create_image(0, 0, image=full_image_tk, anchor="nw")
         self.zoom_img.config(image=full_image_tk)
@@ -368,9 +417,19 @@ class Program:
         # Toplevel widget
         zoom_window.title("Full image")
 
+        self.rotate_count = 0
         # sets the geometry of toplevel
         #full_image_tk = ImageTk.PhotoImage(Image.open(self.data["image_fullpath"][self.cur_ind]))
-        full_image_tk = ImageTk.PhotoImage(self.full_image_og)
+        width, height = self.full_image_og.size
+
+        factor = 900/width
+
+        self.zwidth = round(width * factor)
+        self.zheight= round(height * factor)
+
+        full_image_tk = ImageTk.PhotoImage(self.full_image_og.resize((self.zwidth,self.zheight)))
+
+        #,width=max(self.zwidth,self.zheight), height=max(self.zwidth,self.zheight)
 
         left_frame = tk.Frame(zoom_window)
 
@@ -414,146 +473,8 @@ class Program:
         self.save_button.config(text="Save")
 
         self.cur_data = self.data.iloc[[ind]].reset_index(drop=True)
-        #print(self.cur_data)
 
-        #if(self.cur_ind!=0):
-        #    code.interact(local=locals())
-        #
-
-        self.vessel_entry.delete(0, tk.END)
-        if self.cur_data["verified_vessel"].isna().bool():
-            if self.cur_data["pred_vessel"].isna().bool():
-                self.vessel_entry.insert(0,"")
-            else:
-                self.vessel_entry.insert(0, self.cur_data.loc[0,"pred_vessel"])
-        else:
-            self.vessel_entry.insert(0, self.cur_data.loc[0,"verified_vessel"])
-
-        self.cruise_number_entry.delete(0, tk.END)
-        if self.cur_data["verified_cruise_num"].isna().bool():
-            if self.cur_data["pred_cruise_num"].isna().bool():
-                self.cruise_number_entry.insert(0,"")
-            else:
-                self.cruise_number_entry.insert(0, self.cur_data.loc[0,"pred_cruise_num"])
-        else:
-            self.cruise_number_entry.insert(0, self.cur_data.loc[0,"verified_cruise_num"])
-
-        self.haul_number_entry.delete(0, tk.END)
-        if self.cur_data["verified_haul_num"].isna().bool():
-            if self.cur_data["pred_haul_num"].isna().bool():
-                self.haul_number_entry.insert(0,"")
-            else:
-                self.haul_number_entry.insert(0, self.cur_data.loc[0,"pred_haul_num"])
-        else:
-            self.haul_number_entry.insert(0, self.cur_data.loc[0,"verified_haul_num"])
-
-        self.specimen_number_entry.delete(0, tk.END)
-        if self.cur_data["verified_specimen_num"].isna().bool():
-            if self.cur_data["pred_specimen_num"].isna().bool():
-                self.specimen_number_entry.insert(0, "")
-            else:
-                self.specimen_number_entry.insert(0, self.cur_data.loc[0,"pred_specimen_num"])
-        else:
-            self.specimen_number_entry.insert(0, self.cur_data.loc[0,"verified_specimen_num"])
-
-        self.stomach_sample_entry.delete(0, tk.END)
-        if self.cur_data["verified_stomach_sample"].isna().bool():
-            if self.cur_data["pred_stomach_sample"].isna().bool():
-                self.stomach_sample_entry.insert(0, "")
-            else:
-                self.stomach_sample_entry.insert(0, self.cur_data.loc[0,"pred_stomach_sample"])
-        else:
-            self.stomach_sample_entry.insert(0, self.cur_data.loc[0,"verified_stomach_sample"])
-
-        self.tissue_sample_entry.delete(0, tk.END)
-        if self.cur_data["verified_tissue_sample"].isna().bool():
-            if self.cur_data["pred_tissue_sample"].isna().bool():
-                self.tissue_sample_entry.insert(0, "")
-            else:
-                self.tissue_sample_entry.insert(0, self.cur_data.loc[0,"pred_tissue_sample"])
-        else:
-            self.tissue_sample_entry.insert(0, self.cur_data.loc[0,"verified_tissue_sample"])
-
-        self.right_ovary_entry.delete(0, tk.END)
-        if self.cur_data["verified_right_ovary"].isna().bool():
-            if self.cur_data["pred_right_ovary"].isna().bool():
-                self.right_ovary_entry.insert(0, "")
-            else:
-                self.right_ovary_entry.insert(0, self.cur_data.loc[0,"pred_right_ovary"])
-        else:
-            self.right_ovary_entry.insert(0, self.cur_data.loc[0,"verified_right_ovary"])
-
-        self.left_ovary_entry.delete(0, tk.END)
-        if self.cur_data["verified_left_ovary"].isna().bool():
-            if self.cur_data["pred_left_ovary"].isna().bool():
-                self.left_ovary_entry.insert(0, "")
-            else:
-                self.left_ovary_entry.insert(0, self.cur_data.loc[0,"pred_left_ovary"])
-        else:
-            self.left_ovary_entry.insert(0, self.cur_data.loc[0,"verified_left_ovary"])
-
-        self.whole_animal_entry.delete(0, tk.END)
-        if self.cur_data["verified_whole_animal"].isna().bool():
-            if self.cur_data["pred_whole_animal"].isna().bool():
-                self.whole_animal_entry.insert(0, "")
-            else:
-                self.whole_animal_entry.insert(0, self.cur_data.loc[0,"pred_whole_animal"])
-        else:
-            self.whole_animal_entry.insert(0, self.cur_data.loc[0,"verified_whole_animal"])
-
-        self.length_cm_entry.delete(0, tk.END)
-        if self.cur_data["verified_length_cm"].isna().bool():
-            if self.cur_data["pred_length_cm"].isna().bool():
-                self.length_cm_entry.insert(0, "")
-            else:
-                self.length_cm_entry.insert(0, self.cur_data.loc[0,"pred_length_cm"])
-        else:
-            self.length_cm_entry.insert(0, self.cur_data.loc[0,"verified_length_cm"])
-
-        self.weight_gm_entry.delete(0, tk.END)
-        if self.cur_data["verified_weight_gm"].isna().bool():
-            if self.cur_data["pred_weight_gm"].isna().bool():
-                self.weight_gm_entry.insert(0, "")
-            else:
-                self.weight_gm_entry.insert(0, self.cur_data.loc[0,"pred_weight_gm"])
-        else:
-            self.weight_gm_entry.insert(0, self.cur_data.loc[0,"verified_weight_gm"])
-
-        self.species_identification_entry.delete(0, tk.END)
-        if self.cur_data["verified_species_identification"].isna().bool():
-            if self.cur_data["pred_species_identification"].isna().bool():
-                self.species_identification_entry.insert(0, "")
-            else:
-                self.species_identification_entry.insert(0, self.cur_data.loc[0,"pred_species_identification"])
-        else:
-            self.species_identification_entry.insert(0, self.cur_data.loc[0,"verified_species_identification"])
-
-        self.comments_entry.delete(0, tk.END)
-        if self.cur_data["verified_comments"].isna().bool():
-            if self.cur_data["pred_comments"].isna().bool():
-                self.comments_entry.insert(0, "")
-            else:
-                self.comments_entry.insert(0, self.cur_data.loc[0,"pred_comments"])
-        else:
-            self.comments_entry.insert(0, self.cur_data.loc[0,"verified_comments"])
-
-        self.collector_initials_entry.delete(0, tk.END)
-        if self.cur_data["verified_collector_initials"].isna().bool():
-            if self.cur_data["pred_collector_initials"].isna().bool():
-                self.collector_initials_entry.insert(0, "")
-            else:
-                self.collector_initials_entry.insert(0, self.cur_data.loc[0,"pred_collector_initials"])
-        else:
-            self.collector_initials_entry.insert(0, self.cur_data.loc[0,"verified_collector_initials"])
-
-        self.preservative_entry.delete(0, tk.END)
-        if self.cur_data["verified_preservative"].isna().bool():
-            if self.cur_data["pred_preservative"].isna().bool():
-                self.preservative_entry.insert(0, "")
-            else:
-                self.preservative_entry.insert(0, self.cur_data.loc[0,"pred_preservative"])
-        else:
-            self.preservative_entry.insert(0, self.cur_data.loc[0,"verified_preservative"])
+        [field.refresh_entry(self.cur_data,self.pop_predictions,self.pred_correct_dict,self.disallowed_keys) for field in self.fields]
 
     def image_cycle(self,event='default',direction = 1):
 
@@ -573,7 +494,9 @@ class Program:
             if self.cur_ind > 0 and direction == 1: #and self.cur_ind not in self.cur_encountered
                 #print(self.data.loc[self.cur_ind-1,"voucher_id"])
                 #print(self.data.loc[self.cur_ind, "voucher_id"])
-                if self.data.loc[self.cur_ind-1,"voucher_id"] == self.data.loc[self.cur_ind,"voucher_id"] and pd.isna(self.data.loc[self.cur_ind,"verified_vessel"]):
+                #if self.data.loc[self.cur_ind-1,"voucher_id"] == self.data.loc[self.cur_ind,"voucher_id"] and pd.isna(self.data.loc[self.cur_ind,"verified_vessel"]):
+                if self.data.loc[self.cur_ind - 1, "voucher_id"] == self.data.loc[self.cur_ind, "voucher_id"] and not self.data.loc[self.cur_ind, "voucher_id"]=="" and \
+                        self.data.loc[self.cur_ind, "verified_vessel"]=="":
                     self.refresh_data(self.cur_ind-1)
                     self.save_button.config(text="Autofilled... Save")
                 else:
@@ -584,31 +507,23 @@ class Program:
             if not self.lock_voucher:
                 #code.interact(local=locals())
                 #self.data["voucher_id"].iloc[[self.cur_ind]].equals(self.data["voucher_id"].iloc[[self.cur_ind-1]]) and
-                if not self.data["voucher_id"].iloc[[self.cur_ind]].isna().bool():
-                    #print("didit")
+                #if not self.data["voucher_id"].iloc[[self.cur_ind]].isna().bool():
+                if not (self.data["voucher_id"].iloc[[self.cur_ind]]=="").bool():
                     self.refresh_voucher("automatic",self.cur_ind)
 
         #self.cur_encountered.append(self.cur_ind)
 
     def save_data(self,event="default"):
 
-        self.data.loc[self.cur_ind,"verified_vessel"] = self.vessel_entry.get()
-        self.data.loc[self.cur_ind,"verified_cruise_num"] = self.cruise_number_entry.get()
-        self.data.loc[self.cur_ind, "verified_haul_num"]= self.haul_number_entry.get()
-        self.data.loc[self.cur_ind, "verified_specimen_num"]= self.specimen_number_entry.get()
-        self.data.loc[self.cur_ind,"verified_stomach_sample"] = self.stomach_sample_entry.get()
-        self.data.loc[self.cur_ind, "verified_tissue_sample"]= self.tissue_sample_entry.get()
-        self.data.loc[self.cur_ind,"verified_right_ovary"] = self.right_ovary_entry.get()
-        self.data.loc[self.cur_ind, "verified_left_ovary"]= self.left_ovary_entry.get()
-        self.data.loc[self.cur_ind,"verified_whole_animal"] = self.whole_animal_entry.get()
-        self.data.loc[self.cur_ind, "verified_length_cm"]= self.length_cm_entry.get()
-        self.data.loc[self.cur_ind,"verified_weight_gm"] = self.weight_gm_entry.get()
-        self.data.loc[self.cur_ind, "verified_species_identification"]= self.species_identification_entry.get()
-        self.data.loc[self.cur_ind, "verified_comments"]= self.comments_entry.get()
-        self.data.loc[self.cur_ind,"verified_collector_initials"] = self.collector_initials_entry.get()
-        self.data.loc[self.cur_ind, "verified_preservative"]= self.preservative_entry.get()
+        row = self.data.iloc[[self.cur_ind - 1]].reset_index(drop=True)
 
-        #code.interact(local=locals())
+        self.populate_pred_lookup(row)
+
+        for field in self.fields:
+            ans = field.entry.get()
+            if ans == "":
+                ans = " " #this will distinguish unanylzed (nothing) from analyzed (space)
+            self.data.loc[self.cur_ind, field.verified_labname] = ans
 
         self.save_button.config(text="Saved!")
 
@@ -623,6 +538,14 @@ class Program:
         data_out= pd.concat([self.data,data_recent[data_recent['id'].isin(self.data['id']) == False],])
 
         data_out.to_csv(self.datapath, index=False, header=True)
+
+    def toggle_pop_predictions(self,event="default"):
+        self.pop_predictions = not self.pop_predictions
+
+        if self.pop_predictions:
+            self.pop_predictions_button.config(relief=tk.SUNKEN)
+        else:
+            self.pop_predictions_button.config(relief=tk.RAISED)
 
     def toggle_lock(self,event="default"):
         self.lock_voucher = not self.lock_voucher
@@ -640,7 +563,14 @@ class Program:
             #as of right now, dont use voucher id, just go back on position (that isn't NA)
             #code.interact(local=locals())
 
-            prev_ind = self.data.voucher_id[0:self.voucher_img_id].last_valid_index()
+            #print(self.voucher_img_id)
+
+            ser = (self.data.voucher_id[0:self.voucher_img_id]!="")
+            prev_ind = ser.where(ser).last_valid_index()
+            #prev_ind = self.data.voucher_id[0:self.voucher_img_id].last_valid_index()
+
+            #print(prev_ind)
+            #print(type(prev_ind))
 
             if prev_ind != None:
                 self.refresh_voucher(ind = prev_ind)
@@ -685,28 +615,14 @@ class Program:
 
     def clear_data(self,event="default"):
 
-        self.vessel_entry.delete(0, tk.END)
-        self.cruise_number_entry .delete(0, tk.END)
-        self.haul_number_entry.delete(0, tk.END)
-        self.specimen_number_entry .delete(0, tk.END)
-        self.stomach_sample_entry.delete(0, tk.END)
-        self.tissue_sample_entry .delete(0, tk.END)
-        self.right_ovary_entry.delete(0, tk.END)
-        self.left_ovary_entry .delete(0, tk.END)
-        self.whole_animal_entry.delete(0, tk.END)
-        self.length_cm_entry .delete(0, tk.END)
-        self.weight_gm_entry.delete(0, tk.END)
-        self.species_identification_entry .delete(0, tk.END)
-        self.comments_entry.delete(0, tk.END)
-        self.collector_initials_entry .delete(0, tk.END)
-        self.preservative_entry.delete(0, tk.END)
+        [field.entry.delete(0, tk.END) for field in self.fields]
 
     #if I run into performance issues, I can try feeding chunks of images to pipeline, perhaps asynchronously
-    def run(self):
+    def run(self,mode):
         #run these methods on different threads
 
         #thread 1: disable for now to let imshow work properly
-        #thread1 = Thread(target=self.process_images).start()
+        #Thread(target=self.process_images).start()
 
         #self.process_images()
 
@@ -718,12 +634,17 @@ class Program:
         #while(len(self.data==0)):
         #    sleep(5)
 
-        self.review_data()
+        #prior to working out multithread and live updating
+        if mode == 'review':
+            self.review_data()
+        elif mode == 'process':
+            self.process_images()
+            self.review_data()
 
 
 #complete version of this should allow user to either process data, review data, or do both.
 
-Program(IMAGEFILES,DATAPATH,DATA_KEYS).run()
+Program(IMAGEFILES,DATAPATH,DATA_KEYS,FIELD_NAMES_APP,FIELD_NAMES_DATA).run(mode)
 
 
 #                        "collection":[[48.5,7.5],[77,7.5],[48.5,11.5],[77,11.5]],

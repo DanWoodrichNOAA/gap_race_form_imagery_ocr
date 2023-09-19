@@ -152,7 +152,7 @@ class ImageToData:
         #add border, or
         #image = cv2.copyMakeBorder(image, 0, 384-image.shape[0], 0, 384-image.shape[1], cv2.BORDER_CONSTANT)
         #resize
-        image = cv2.resize(col, (384,384), interpolation = cv2.INTER_AREA)
+        image = cv2.resize(col, (384,384), interpolation = cv2.INTER_LINEAR) #was INTER_AREA
         #both
         #code.interact(local=locals())
         #upscale_perc =384/image.shape[1]

@@ -5,3 +5,6 @@ __pycache__
 data.csv
 testout_cropssave
 training_data
+data_dump
+training_dump
+problem_evaluation.pptx

@@ -1,13 +1,13 @@
 from keras_ocr.tools import read
-import code
+#import code
 import cv2
 import numpy as np
-from time import time
-import pytesseract
-import random
+#from time import time
+#import pytesseract
+#import random
 import torchvision.transforms as transforms
 import os
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from Levenshtein import distance as lev
 
 
@@ -15,7 +15,7 @@ from Levenshtein import distance as lev
 #use keras ocr to locate text in image
 #use lexical similarity algorithm to locate title text
 #try 4 times for different image rotations if not working
-#return bounding box of text, then use the bounding box of text to predict voucher coordinates
+#return bounding box of text, then use the bounding box of text to predict spec_col_label coordinates
 
 #lexical similarity: don't need to use ml, instead, I will export a score based on length similarity
 #and letter similarity
@@ -118,20 +118,20 @@ def iterate_on_match(id,cur_dict,ref_dict):
         if min(hist_metrics) > metric_treshold:
             return id
 
-    return id + 1
+    return str(int(id) + 1)
 
 #return either coords or none
 
 class ImageToData:
 
-    def __init__(self,kocr,tr_ocr_processor,trocr,image,voucher_dims,voucher_dims_dict,prev_array_dict,max_id,data,predict_fields):
+    def __init__(self,kocr,tr_ocr_processor,trocr,image,spec_col_label_dims,spec_col_label_dims_dict,prev_array_dict,max_id,data,predict_fields):
         self.image_name = image
         self.image = cv2.imread(image)
         self.kocr = kocr
         self.trocr = trocr
         self.tr_ocr_processor = tr_ocr_processor
-        self.voucher_dims = voucher_dims
-        self.voucher_dims_dict = voucher_dims_dict.copy()
+        self.spec_col_label_dims = spec_col_label_dims
+        self.spec_col_label_dims_dict = spec_col_label_dims_dict.copy()
         self.semvecs_threshold = 1
         self.indeces_dict = {}
         self.rotate_count = 0
@@ -217,7 +217,7 @@ class ImageToData:
 
             #populate dictionary of which labels correspond to which label index.
             match_count = 0
-            for m in self.voucher_dims_dict["labels"]:
+            for m in self.spec_col_label_dims_dict["labels"]:
                 lexical_vec = []
                 for p in self.labs:
                     #lexical_vec.append(simple_lexical(m, p)) #this was a custom algorithm, trying a more conventional one
@@ -240,7 +240,7 @@ class ImageToData:
                     self.get_data()
                 else:
                     #return empty data. set cur array as prev array
-                    self.data["voucher_id"] = None
+                    self.data["spec_col_label_id"] = None
                     self.cur_array_dict = self.prev_array_dict
             else:
 
@@ -257,7 +257,7 @@ class ImageToData:
                     index = self.indeces_dict[i]
                     pts_translated.append(self.predictions[0][index][1])
 
-                    pts_source.append(np.array(self.voucher_dims_dict["labels"][i]))
+                    pts_source.append(np.array(self.spec_col_label_dims_dict["labels"][i]))
 
                 pts_translated = np.vstack(pts_translated)
                 pts_source = np.vstack(pts_source)
@@ -269,7 +269,7 @@ class ImageToData:
 
                 #im_out_cp = im_out.copy()
 
-                img_full_crop = im_out[self.voucher_dims[0][1]:self.voucher_dims[2][1],self.voucher_dims[0][0]:self.voucher_dims[1][0]]
+                img_full_crop = im_out[self.spec_col_label_dims[0][1]:self.spec_col_label_dims[2][1],self.spec_col_label_dims[0][0]:self.spec_col_label_dims[1][0]]
                 #code.interact(local=locals())
                 path = f"training_data/{self.data['id']}"
                 if not os.path.exists(path):
@@ -282,9 +282,9 @@ class ImageToData:
                 #loop through each field and crop:
                 #should I make this smarter- only go through fields which have a label to match? Don't even have that relation right now...
 
-                for m in self.voucher_dims_dict["fields"]:
-                    img_field = im_out[round(self.voucher_dims_dict['fields'][m][0][1]):round(self.voucher_dims_dict['fields'][m][2][1]),
-                                          round(self.voucher_dims_dict['fields'][m][0][0]):round(self.voucher_dims_dict['fields'][m][1][0])]
+                for m in self.spec_col_label_dims_dict["fields"]:
+                    img_field = im_out[round(self.spec_col_label_dims_dict['fields'][m][0][1]):round(self.spec_col_label_dims_dict['fields'][m][2][1]),
+                                          round(self.spec_col_label_dims_dict['fields'][m][0][0]):round(self.spec_col_label_dims_dict['fields'][m][1][0])]
 
                     img_crop_processed = self.process_field(img_field)
 
@@ -304,10 +304,10 @@ class ImageToData:
                 if self.cur_array_dict != {}:
                     newid = iterate_on_match(self.cur_id,self.cur_array_dict,self.prev_array_dict)
 
-                    self.data["voucher_id"] = newid
+                    self.data["spec_col_label_id"] = newid
 
                 else:
-                    self.data["voucher_id"] = None
+                    self.data["spec_col_label_id"] = None
 
                     self.cur_array_dict = self.prev_array_dict
 
@@ -324,7 +324,7 @@ class ImageToData:
 
     #compare the combined bounding box with that in dict to determine relative size and orientation
 
-    #use relationship logic to calculate absolute predicted position of the voucher.
+    #use relationship logic to calculate absolute predicted position of the spec_col_label.
 
 
 
@@ -362,9 +362,9 @@ class ImageToData:
     # block to visualize field crops
     # image2 = cv2.resize(self.image, (300, 400))
     # image2[round(form_tl_ys_avg / 10), round(form_tl_xs_avg / 10)] = [0, 0, 255]
-    # for m in self.voucher_dims_dict['fields_adj']:
+    # for m in self.spec_col_label_dims_dict['fields_adj']:
     #    for p in range(4):
-    #        image2[round(self.voucher_dims_dict['fields_adj'][m][p][1]/10),round(self.voucher_dims_dict['fields_adj'][m][p][0]/10)]=[0,0,255]
+    #        image2[round(self.spec_col_label_dims_dict['fields_adj'][m][p][1]/10),round(self.spec_col_label_dims_dict['fields_adj'][m][p][0]/10)]=[0,0,255]
 
     # cv2.imshow('image', image2)
     # cv2.waitKey(0)
@@ -434,7 +434,7 @@ class ImageToData:
     # self.data["pred_" + m] = trocr_out
     # self.cur_array_dict[m]=col
 
-    # self.voucher_dims_dict["fields"][m]["pred_label"] = pred_label
+    # self.spec_col_label_dims_dict["fields"][m]["pred_label"] = pred_label
 
     # cv2.imshow("out", sharpened)
     # cv2.waitKey(500)
@@ -451,10 +451,10 @@ class ImageToData:
 
     # code.interact(local=locals())
     # rcol = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-    # for m in self.voucher_dims_dict["fields"]:
+    # for m in self.spec_col_label_dims_dict["fields"]:
     #    for p in range(3):
-    #        cv2.line(im_out_cp, (round(self.voucher_dims_dict['fields'][m][p][0]),
-    #                          round(self.voucher_dims_dict['fields'][m][p][1])),
-    #                 (round(self.voucher_dims_dict['fields'][m][(p + 1) % 4][0]),
-    #                  round(self.voucher_dims_dict['fields'][m][(p + 1) % 4][1])), color=rcol,
+    #        cv2.line(im_out_cp, (round(self.spec_col_label_dims_dict['fields'][m][p][0]),
+    #                          round(self.spec_col_label_dims_dict['fields'][m][p][1])),
+    #                 (round(self.spec_col_label_dims_dict['fields'][m][(p + 1) % 4][0]),
+    #                  round(self.spec_col_label_dims_dict['fields'][m][(p + 1) % 4][1])), color=rcol,
     #                 thickness=4)

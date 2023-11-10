@@ -1,10 +1,10 @@
 import os
 import pandas as pd
-import numpy as np
+#import numpy as np
 from misc import is_img, CreateToolTip
-import matplotlib.pyplot as plt
-from threading import Thread
-from time import sleep
+#import matplotlib.pyplot as plt
+#from threading import Thread
+#from time import sleep
 import tkinter as tk
 from copy import deepcopy
 from PIL import ImageTk, Image
@@ -28,15 +28,19 @@ PREDICT_FIELDS = True
 
 #paramters to change:
 
-mode = 'review'
+mode = 'process' #review or process
 #DATAPATH = "data_base.csv" #this was processed from the source path: "Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3" . using base ocr model
-DATAPATH = "data_largetrocr.csv"
+#DATAPATH = "data_largetrocr.csv"
+DATAPATH = "data_new.csv"
 #training data is saved in
 #DATAPATH = "data_all.csv" #this applies to all imagery, but starts on a cruise from the 2000s.
 
 #make this more customizable later
-IMAGEDIR = "Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3"
-#IMAGEDIR = "Y:/RACE_Imagery/Field_Photos"
+#IMAGEDIRS = ["Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3","Y:/RACE_Imagery/Field_Photos/AI2018Photos","Y:/RACE_Imagery/Field_Photos/EBSshelf2004"]
+IMAGEDIRS = ["Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3"]
+
+##################################
+
 
 #when changing data source, make sure to rename training data correctly (for now).
 
@@ -50,21 +54,17 @@ import cv2
 
 #tmp off
 
-#voucher dimensions (10px):
-#this will be used to reference relative coordinates of different fields
-#VOUCHER_DIMS = [[0,0],[118,0],[0,95],[118,95]]
-VOUCHER_DIMS = [[0,0],[442,0],[0,352],[442,352]]
-
 
 
 #IMAGEFILES = os.listdir(IMAGEDIR)
 #IMAGEFILES = [IMAGEDIR + "/" + f for f in IMAGEFILES if is_img(f)]
-IMAGEDIR = pathlib.Path(IMAGEDIR)
-IMAGEFILES=list(IMAGEDIR.rglob("*.[jJ][pP][gG]")) #[png][gif][jpg][JPG][jpeg]
+IMAGEFILES = []
+for i in IMAGEDIRS:
+    IMAGEDIR = pathlib.Path(i)
+    add_files=list(IMAGEDIR.rglob("*.[jJ][pP][gG]")) #[png][gif][jpg][JPG][jpeg]
 
-IMAGEFILES = [str(f) for f in IMAGEFILES]
+    IMAGEFILES = IMAGEFILES + [str(f) for f in add_files]
 
-#code.interact(local=locals())
 
 #make the IMAGEFILES correspond to all of the
 
@@ -75,10 +75,14 @@ IMAGEFILES = [str(f) for f in IMAGEFILES]
 #[tl,tr,bl,br]
 
 #going to seperate this into a labels and fields dict. labels dict will only contain unique words, since these
-#will be used to reposition voucher.
+#will be used to reposition spec_col_label.
 
 #"title_specimen":[[24.5,7.5],[47.5,7.5],[24.5,11.5],[47.5,11.5]],
-VOUCHER_DIMS_DICT = {"labels": {
+#spec_col_label dimensions (10px):
+#this will be used to reference relative coordinates of different fields
+#spec_col_label_DIMS = [[0,0],[118,0],[0,95],[118,95]]
+SPEC_COL_LABEL_DIMS = [[0,0],[442,0],[0,352],[442,352]]
+SPEC_COL_LABEL_DIMS_DICT = {"labels": {
                         "collection":[[181.,  25.],[289.,  25.],[289.,  41.],[181.,  41.]],
                         "label":[[290.76852 ,  24.582926],[347.91806 ,  23.312931],[348.26553 ,  38.949654],[291.116   ,  40.219646]],
                         "center": [[375.,  88.],[415.,  88.],[415., 100.],[375., 100.]],
@@ -119,24 +123,15 @@ VOUCHER_DIMS_DICT = {"labels": {
                         "preservative": [[347, 318.63], [433.185, 318.63], [347, 350], [433.185, 350]]
 }}
 
-#data will be stored in a table- read this from file at script start.
-
-DATA_KEYS = {"id":None,"voucher_id":None,"image_fullpath":None,"image_croppath":None,"pred_vessel":None,"pred_cruise_num":None,
-             "pred_haul_num":None,"pred_specimen_num":None,"pred_stomach_sample":None,"pred_tissue_sample":None,"pred_right_ovary":None,
-            "pred_left_ovary":None,"pred_whole_animal":None,"pred_length_cm":None,"pred_weight_gm":None,"pred_species_identification":None,
-            "pred_comments":None,"pred_collector_initials":None,"pred_preservative":None,"verified_vessel":None,"verified_cruise_num":None,"verified_haul_num":None,
-            "verified_specimen_num":None,"verified_stomach_sample":None,"verified_tissue_sample":None,"verified_right_ovary":None,"verified_left_ovary":None,
-            "verified_whole_animal":None,"verified_length_cm":None,	"verified_weight_gm":None,"verified_species_identification":None,"verified_comments":None,
-            "verified_collector_initials":None,	"verified_preservative":None
-}
+FIELD_NAMES_DATA = [a for a in SPEC_COL_LABEL_DIMS_DICT["fields"]]
+#data keys should match output csv columns
+DATA_KEYS = {a:None for a in ["id","spec_col_label_id","image_fullpath","image_croppath"]+["pred_"+ b for b in FIELD_NAMES_DATA]+["verified_" + c for c in FIELD_NAMES_DATA]}
 
 FIELD_NAMES_APP = ["VESSEL","CRUISE NUMBER","HAUL NUMBER","SPECIMEN NUMBER","STOMACH SAMPLE",
                    "TISSUE SAMPLE","RIGHT OVARY","LEFT OVARY","WHOLE ANIMAL","LENGTH (CM)",
                    "WEIGHT (GM)","SPECIES IDENTIFICATION","COMMENTS","COLLECTOR'S INITIALS",
                    "PRESERVATIVE"]
-FIELD_NAMES_DATA = ["vessel","cruise_num","haul_num","specimen_num","stomach_sample","tissue_sample",
-                    "right_ovary","left_ovary","whole_animal","length_cm","weight_gm","species_identification",
-                    "comments","collector_initials","preservative"]
+
 
 class FormField():
 
@@ -147,6 +142,15 @@ class FormField():
         self.entry.grid(row=labnum, column=1, padx=5)
         self.pred_labname = "pred_" + datalab
         self.verified_labname = "verified_" + datalab
+
+        self.dissallowed_prefixes = [".",". "," .","#"," #","# "]
+
+        #specific behavior for comments, which includes the word comment in the two line field
+        if datalab =='comments':
+            self.hardcode_disallowed = ['comments','comments',"conserro.","conserro","commercials.","commercials","convermo.","convermo","comments # #","comments #",
+                                        "commercialists","commercialists.","contents #","contents","contents."]
+        else:
+            self.hardcode_disallowed = []
 
     #compare to pred_correct_dict and dissalowed keys here:
     def refresh_entry(self,cur_data,pop_predictions,pred_correct_dict,disallowed_keys):
@@ -160,6 +164,20 @@ class FormField():
                     pred = pred_correct_dict[cur_data.loc[0,self.pred_labname]]
                 else:
                     pred = cur_data.loc[0,self.pred_labname]
+
+                for l in self.hardcode_disallowed:
+                    pred = pred.replace(l,'')
+
+                #add this in once I update python past 3.11
+                #for m in self.dissallowed_prefixes:
+                #    pred = pred.removeprefix(m)
+                for m in self.dissallowed_prefixes:
+                    lm = len(m)
+                    if pred[:lm]==m:
+                        pred = pred[lm:]
+
+                #remove all whitespace from start and end.
+                pred = pred.strip()
 
                 self.entry.insert(0, pred)
             else:
@@ -181,24 +199,30 @@ class Program:
         if self.data.empty:
             self.image_to_go = images_in
         else:
-            #code.interact(local=locals())
             self.image_to_go = [f for f in images_in if f not in self.data.image_fullpath.to_list()]
         self.processed_image_coords = {} #key is image name, each is a dict of 1 coords and 2 path to image crop.
         self.reviewed_image_data = {} #
         self.prev_array ={}
         #populate below by looking in loaded data
         #code.interact(local=locals())
-        self.max_voucher_id = self.data.voucher_id.dropna().max()
-        self.max_row_id = self.data.id.dropna().max()
+        #code.interact(local=locals())
+        self.max_spec_col_label_id = pd.to_numeric(self.data.spec_col_label_id).max()
+        self.max_row_id = pd.to_numeric(self.data.id).max()
 
         #test for NA, give 0 if na
-        if self.max_voucher_id != self.max_voucher_id:
+        if self.max_spec_col_label_id != self.max_spec_col_label_id:
             #code.interact(local=locals())
-            self.max_voucher_id = 1
+            self.max_spec_col_label_id = 1
+
+        self.max_spec_col_label_id = int(self.max_spec_col_label_id)
 
         # test for NA, give 0 if na
         if self.max_row_id != self.max_row_id:
             self.max_row_id = 1
+        else:
+            self.max_row_id += 1
+
+        self.max_row_id = int(self.max_row_id)
 
         #create a hashset of dissalowed keys
         self.disallowed_keys = set()
@@ -210,6 +234,8 @@ class Program:
             row = self.data.iloc[[i]].reset_index(drop=True)
             self.populate_pred_lookup(row)
 
+        #populate a list of rows where spec_col_label is populated
+        self.spec_col_idxs = [i for i, x in enumerate(self.data.spec_col_label_id) if x != ""]
 
         #print(self.pred_correct_dict)
         #print(self.disallowed_keys)
@@ -257,19 +283,21 @@ class Program:
         print(focal_img)
 
         #populates data needed for review method
-        print(self.max_voucher_id)
+        print(self.max_spec_col_label_id)
 
         datain = deepcopy(self.datakeys)
         datain["id"] = self.max_row_id
         datain["image_fullpath"] = focal_img
 
-        imagetodata= ImageToData(self.kocr,self.tr_ocr_processor,self.trocr,focal_img,VOUCHER_DIMS,VOUCHER_DIMS_DICT,self.prev_array,self.max_voucher_id,datain,PREDICT_FIELDS)
+        imagetodata= ImageToData(self.kocr,self.tr_ocr_processor,self.trocr,focal_img,SPEC_COL_LABEL_DIMS,SPEC_COL_LABEL_DIMS_DICT,self.prev_array,self.max_spec_col_label_id,datain,PREDICT_FIELDS)
+
 
         #do it
         data,prev_array = imagetodata.get_data()
 
-        if not data["voucher_id"] == None:
-            self.max_voucher_id = data["voucher_id"]
+        if not data["spec_col_label_id"] == None:
+            self.max_spec_col_label_id = data["spec_col_label_id"]
+            #code.interact(local=locals())
 
         self.prev_array = prev_array
 
@@ -279,22 +307,36 @@ class Program:
 
         row.to_csv(self.datapath, mode='a',index=False,header=False)
 
-        #save data to csv. if max_voucher_id is none, change it to NA (no voucher present). still good to document
+        #save data to csv. if max_spec_col_label_id is none, change it to NA (no spec_col_label present). still good to document
         #for future discovery.
 
     def review_data(self):
 
         #use verified vessel as a proxy
         #self.cur_ind = self.data.verified_vessel.isna().idxmin()-1
-        self.cur_ind = (self.data.verified_vessel=="").idxmin() - 1
+
+        #self.cur_ind = (self.data.verified_vessel=="").idxmin() - 1
+        #print((self.data.verified_vessel==""))
+        ser = (self.data.verified_vessel!="")
+        self.cur_ind = ser.where(ser).last_valid_index()
+        #print(ser)
+        #print(self.cur_ind)
+        #print(self.spec_col_idxs)
+        if self.cur_ind != None:
+            self.spec_col_label_img_ind = self.spec_col_idxs.index(self.cur_ind+1)
+        else:
+            self.spec_col_label_img_ind =0
+            self.cur_ind =0
+        #print(self.cur_ind)
 
         #self.cur_encountered = []
 
         # code.interact(local=locals())
         #self.image_advance()
 
-        self.lock_voucher = False
+        self.lock_spec_col_label = False
         self.pop_predictions = True
+        self.advance_on_save = True
 
         # create root window
         window = tk.Tk()
@@ -321,29 +363,29 @@ class Program:
         self.zoom_rotate_button = tk.Button(left_frame, text="zoom/rotate", command=lambda: self.full_image_zoom(window))
         self.zoom_rotate_button.place(anchor = tk.NW)
 
-        self.last_cropped_image_button = tk.Button(cropped_buttons_frame, text="Previous voucher",
-                                              command=self.go_to_last_voucher)
+        self.last_cropped_image_button = tk.Button(cropped_buttons_frame, text="Previous spec_col_label",
+                                              command=lambda: self.advance_spec_col_label(-1))
         self.last_cropped_image_button.grid(row=0, column=0)
 
         CreateToolTip(self.last_cropped_image_button, text='Shortcut: Control-Right key')
 
-        self.refresh_button = tk.Button(cropped_buttons_frame, text="Latest voucher", command=self.refresh_voucher)
+        self.refresh_button = tk.Button(cropped_buttons_frame, text="Next spec_col_label", command=lambda: self.advance_spec_col_label(1))
         self.refresh_button.grid(row=0, column=1)
 
         CreateToolTip(self.refresh_button, text='Shortcut: Control-Left key')
 
-        self.lock_button = tk.Button(cropped_buttons_frame, text="Lock voucher", command=self.toggle_lock)
+        self.lock_button = tk.Button(cropped_buttons_frame, text="Lock spec_col_label", command=self.toggle_lock)
         self.lock_button.grid(row=1, column=0)
 
         CreateToolTip(self.lock_button, text='Shortcut: Control-L')
 
-        self.populate_button = tk.Button(cropped_buttons_frame, text="Populate from voucher", command=self.populate_from_voucher)
+        self.populate_button = tk.Button(cropped_buttons_frame, text="Populate from spec_col_label", command=self.populate_from_spec_col_label)
         self.populate_button.grid(row=1, column=1)
 
         CreateToolTip(self.populate_button, text='Shortcut: Control-P')
 
-        self.voucher_label = tk.Label(top_right_frame)
-        self.voucher_label.pack()
+        self.spec_col_label_label = tk.Label(top_right_frame)
+        self.spec_col_label_label.pack()
 
         fields_frame = tk.Frame(top_right_frame)
         fields_frame.pack()
@@ -370,8 +412,15 @@ class Program:
 
         CreateToolTip(self.clear_data_button, text='Shortcut: Control-W')
 
+        self.advance_on_save_button = tk.Button(data_buttons_frame, text="Advance on Save",
+                                                command=self.toggle_advance_on_save)
+        self.advance_on_save_button.grid(row=0, column=3, padx=5)
+        self.advance_on_save_button.config(relief=tk.SUNKEN)
+
+        CreateToolTip(self.advance_on_save_button, text='Shortcut: Control-A')
+
         self.save_button = tk.Button(data_buttons_frame, text="Save", command=self.save_data)
-        self.save_button.grid(row=0, column=3, padx=5)
+        self.save_button.grid(row=0, column=4, padx=5)
 
         CreateToolTip(self.save_button, text='Shortcut: Enter key\nShortcut hard save (write to csv): Control-S')
 
@@ -381,14 +430,14 @@ class Program:
 
         window.bind("<Control-s>",self.hard_save_data)
         window.bind("<Control-r>", self.populate_from_last)
-        window.bind("<Control-p>", self.populate_from_voucher)
+        window.bind("<Control-p>", self.populate_from_spec_col_label)
 
-        window.bind("<Control-Left>", self.go_to_last_voucher)
-        window.bind("<Control-Right>", self.refresh_voucher)
+        window.bind("<Control-Left>", lambda e: self.advance_spec_col_label(e,-1))
+        window.bind("<Control-Right>", lambda e: self.advance_spec_col_label(e,1))
         window.bind("<Control-l>", self.toggle_lock)
         window.bind("<Control-o>", self.toggle_pop_predictions)
         window.bind("<Control-w>", self.clear_data)
-
+        window.bind("<Control-a>", self.toggle_advance_on_save)
 
         self.image_cycle("start",1)
 
@@ -490,12 +539,12 @@ class Program:
 
             self.refresh_full_image()
 
-            #test if image is predicted to be same voucher, if so preload it. only do it in forward direction.
+            #test if image is predicted to be same spec_col_label, if so preload it. only do it in forward direction.
             if self.cur_ind > 0 and direction == 1: #and self.cur_ind not in self.cur_encountered
-                #print(self.data.loc[self.cur_ind-1,"voucher_id"])
-                #print(self.data.loc[self.cur_ind, "voucher_id"])
-                #if self.data.loc[self.cur_ind-1,"voucher_id"] == self.data.loc[self.cur_ind,"voucher_id"] and pd.isna(self.data.loc[self.cur_ind,"verified_vessel"]):
-                if self.data.loc[self.cur_ind - 1, "voucher_id"] == self.data.loc[self.cur_ind, "voucher_id"] and not self.data.loc[self.cur_ind, "voucher_id"]=="" and \
+                #print(self.data.loc[self.cur_ind-1,"spec_col_label_id"])
+                #print(self.data.loc[self.cur_ind, "spec_col_label_id"])
+                #if self.data.loc[self.cur_ind-1,"spec_col_label_id"] == self.data.loc[self.cur_ind,"spec_col_label_id"] and pd.isna(self.data.loc[self.cur_ind,"verified_vessel"]):
+                if self.data.loc[self.cur_ind - 1, "spec_col_label_id"] == self.data.loc[self.cur_ind, "spec_col_label_id"] and not self.data.loc[self.cur_ind, "spec_col_label_id"]=="" and \
                         self.data.loc[self.cur_ind, "verified_vessel"]=="":
                     self.refresh_data(self.cur_ind-1)
                     self.save_button.config(text="Autofilled... Save")
@@ -504,16 +553,18 @@ class Program:
             else:
                 self.refresh_data(self.cur_ind)
 
-            if not self.lock_voucher:
+            if not self.lock_spec_col_label:
                 #code.interact(local=locals())
-                #self.data["voucher_id"].iloc[[self.cur_ind]].equals(self.data["voucher_id"].iloc[[self.cur_ind-1]]) and
-                #if not self.data["voucher_id"].iloc[[self.cur_ind]].isna().bool():
-                if not (self.data["voucher_id"].iloc[[self.cur_ind]]=="").bool():
-                    self.refresh_voucher("automatic",self.cur_ind)
+                #self.data["spec_col_label_id"].iloc[[self.cur_ind]].equals(self.data["spec_col_label_id"].iloc[[self.cur_ind-1]]) and
+                #if not self.data["spec_col_label_id"].iloc[[self.cur_ind]].isna().bool():
+                if not (self.data["spec_col_label_id"].iloc[[self.cur_ind]]=="").bool():
+                    self.refresh_spec_col_label("automatic",self.cur_ind)
 
         #self.cur_encountered.append(self.cur_ind)
 
-    def save_data(self,event="default"):
+    def save_data(self,event="default",advance=True):
+
+        self.save_button.config(text="Saved!")
 
         row = self.data.iloc[[self.cur_ind - 1]].reset_index(drop=True)
 
@@ -525,19 +576,23 @@ class Program:
                 ans = " " #this will distinguish unanylzed (nothing) from analyzed (space)
             self.data.loc[self.cur_ind, field.verified_labname] = ans
 
-        self.save_button.config(text="Saved!")
+        if advance and self.advance_on_save:
+            self.image_cycle(1)
 
     def hard_save_data(self,event="default"):
 
-        self.save_data()
+        self.save_data(advance=False)
 
         self.save_button.config(text="Hard Saved!")
 
-        data_recent = pd.read_csv(self.datapath)
+        data_recent = pd.read_csv(self.datapath, dtype = str,keep_default_na=False)
 
         data_out= pd.concat([self.data,data_recent[data_recent['id'].isin(self.data['id']) == False],])
 
         data_out.to_csv(self.datapath, index=False, header=True)
+
+        if self.advance_on_save:
+            self.image_cycle(1)
 
     def toggle_pop_predictions(self,event="default"):
         self.pop_predictions = not self.pop_predictions
@@ -547,66 +602,93 @@ class Program:
         else:
             self.pop_predictions_button.config(relief=tk.RAISED)
 
-    def toggle_lock(self,event="default"):
-        self.lock_voucher = not self.lock_voucher
+    def toggle_advance_on_save(self,event="default"):
+        self.advance_on_save = not self.advance_on_save
 
-        if self.lock_voucher:
+        if self.advance_on_save:
+            self.advance_on_save_button.config(relief=tk.SUNKEN)
+        else:
+            self.advance_on_save_button.config(relief=tk.RAISED)
+
+
+    def toggle_lock(self,event="default"):
+        self.lock_spec_col_label = not self.lock_spec_col_label
+
+        if self.lock_spec_col_label:
             self.lock_button.config(relief=tk.SUNKEN)
         else:
             self.lock_button.config(relief=tk.RAISED)
 
-    def go_to_last_voucher(self,event='default'):
+    def advance_spec_col_label(self,event='default',dir=1):
 
-        #find the last index where voucher id was diff and not na
+        #print(self.spec_col_label_img_id+dir)
 
-        if not self.lock_voucher and not self.cur_ind <= 0 :
-            #as of right now, dont use voucher id, just go back on position (that isn't NA)
+        #find the last index where spec_col_label id was diff and not na
+
+        if not self.lock_spec_col_label and self.spec_col_label_img_ind < (len(self.spec_col_idxs)-dir) and self.spec_col_label_img_ind  > 0-dir:
+            #as of right now, dont use spec_col_label id, just go back on position (that isn't NA)
             #code.interact(local=locals())
 
-            #print(self.voucher_img_id)
+            #print(self.spec_col_label_img_id)
 
-            ser = (self.data.voucher_id[0:self.voucher_img_id]!="")
-            prev_ind = ser.where(ser).last_valid_index()
-            #prev_ind = self.data.voucher_id[0:self.voucher_img_id].last_valid_index()
+            #code.interact(local=locals())
+            self.spec_col_label_img_ind += dir
+
+            new_ind = self.spec_col_idxs[self.spec_col_label_img_ind]
+
+            #ugly solution, improve later
+            #really what I want to do is store a list of all where spec_col_label == true and then go up and down
+           # if dir == 1:
+            #    next_spec_col_label = new_ind
+            #    count = 0
+             #   while new_ind ==next_spec_col_label and self.spec_col_label_img_id+count < len(self.data):
+            #        count+=1
+            #        ser = (self.data.spec_col_label_id[0:self.spec_col_label_img_id + count] != "")
+            #        new_ind = ser.where(ser).last_valid_index()
+
+            #prev_ind = self.data.spec_col_label_id[0:self.spec_col_label_img_id].last_valid_index()
 
             #print(prev_ind)
             #print(type(prev_ind))
 
-            if prev_ind != None:
-                self.refresh_voucher(ind = prev_ind)
+            if new_ind != None:
+                self.refresh_spec_col_label(ind = new_ind)
 
-    def refresh_voucher(self,event='default',ind='default'):
+    def refresh_spec_col_label(self,event='default',ind='default'):
 
-        if not self.lock_voucher:
+        if not self.lock_spec_col_label:
 
             if ind == 'default':
-                ind = self.data.voucher_id[0:self.cur_ind+1].last_valid_index()
+                #print(self.data.spec_col_label_id)
+                ser = (self.data.spec_col_label_id[0:self.cur_ind+1] != "")
+                ind = ser.where(ser).last_valid_index()
+                #ind = self.data.spec_col_label_id[0:self.cur_ind+1].last_valid_index()
 
             if ind != None:
 
-                #pull up latest voucher based on current id.
-                voucher_path = self.data["image_croppath"][ind]
-                voucher = Image.open(voucher_path)
-                voucher = voucher.resize((300, 300))  # Adjust the size as needed
-                voucher_tk = ImageTk.PhotoImage(voucher)
+                #pull up latest spec_col_label based on current id.
+                spec_col_label_path = self.data["image_croppath"][ind]
+                spec_col_label = Image.open(spec_col_label_path)
+                spec_col_label = spec_col_label.resize((300, 300))  # Adjust the size as needed
+                spec_col_label_tk = ImageTk.PhotoImage(spec_col_label)
 
-                self.voucher_label.config(image=voucher_tk)
-                self.voucher_label.image = voucher_tk
+                self.spec_col_label_label.config(image=spec_col_label_tk)
+                self.spec_col_label_label.image = spec_col_label_tk
 
-                #retain memory of which voucher is currently displayed.
-                self.voucher_img_id = deepcopy(ind)
+                #retain memory of which spec_col_label is currently displayed.
+                self.spec_col_label_img_id = deepcopy(ind)
 
-    def populate_from_voucher(self,event="default"):
+    def populate_from_spec_col_label(self,event="default"):
 
-        #populate based on the index of the current voucher.
+        #populate based on the index of the current spec_col_label.
 
-        self.refresh_data(self.voucher_img_id)
+        self.refresh_data(self.spec_col_label_img_id)
 
-        # this will fill in current values with those matching the current voucher in the voucher pane.
+        # this will fill in current values with those matching the current spec_col_label in the spec_col_label pane.
 
     def populate_from_last(self,event="default"):
 
-        #this will take from the last voucher that matches current one.
+        #this will take from the last spec_col_label that matches current one.
 
         if self.cur_ind !=0:
             self.refresh_data(self.cur_ind-1)

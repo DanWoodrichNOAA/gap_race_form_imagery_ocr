@@ -1,0 +1,25 @@
+tkinter features (that I have used so far)
+
+-buttons
+-panes
+-toggles
+-shortcuts
+-tooltips
+-popout window
+-get to use powerful python object oriented stuff (for instances, all of the labels/fields are 
+different instances of a single class). 
+
+
+good for barebones ui. Core features are fast- but, would need to setup a sqlite database in order to allow
+for update fxns etc to be performant as total data size grows (most likely, although the quantities aren't that large).
+currently the backend is just a csv I load in in full and then edit  . sqlite I think is the normal way to do this
+in a good application so I'd probably lean towards setting it up that way. 
+
+The ui is probably mostly built out for their use case? 
+
+
+
+
+database documentation: 
+
+https://docs.google.com/document/d/1NCt7-HERUVPyI9YtqBJ7EJO1z4VufspvslCLGirUT8A/edit#heading=h.1b5b03t7hvuw

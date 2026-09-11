@@ -28,17 +28,18 @@ PREDICT_FIELDS = True
 
 #paramters to change:
 
-mode = 'process' #review or process
+mode = 'review' #review or process
 #DATAPATH = "data_base.csv" #this was processed from the source path: "Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3" . using base ocr model
 #DATAPATH = "data_largetrocr.csv"
-DATAPATH = "data_new.csv"
+#DATAPATH = "data_new.csv"
+DATAPATH = "data_local.csv"
 #training data is saved in
 #DATAPATH = "data_all.csv" #this applies to all imagery, but starts on a cruise from the 2000s.
 
 #make this more customizable later
 #IMAGEDIRS = ["Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3","Y:/RACE_Imagery/Field_Photos/AI2018Photos","Y:/RACE_Imagery/Field_Photos/EBSshelf2004"]
-IMAGEDIRS = ["Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3"]
-
+#IMAGEDIRS = ["Y:/RACE_Imagery/Field_Photos/EBSshelf2022/Vesteraalen/Leg3"]
+IMAGEDIRS = ["C:/Users/daniel.woodrich/Desktop/offline emergency files/IT/race imagery/Leg3"]
 ##################################
 
 
@@ -390,6 +391,7 @@ class Program:
         fields_frame = tk.Frame(top_right_frame)
         fields_frame.pack()
 
+        #generating list of button from a class (useful for field / labels).
         self.fields = [FormField(fields_frame,self.field_names_app[i],
                                         self.field_names_data[i],i) for i in range(len(self.field_names_data))]
 

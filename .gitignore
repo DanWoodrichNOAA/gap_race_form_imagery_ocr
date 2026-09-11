@@ -1,0 +1,13 @@
+testout
+venv
+.idea
+__pycache__
+*.csv
+testout_cropssave
+training_data
+data_dump
+training_dump
+problem_evaluation.pptx
+testout
+venv3
+*.zip

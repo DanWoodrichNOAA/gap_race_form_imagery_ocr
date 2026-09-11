@@ -32,7 +32,7 @@ Because fully automated handwriting transcription proved unreliable out-of-the-b
 * **Future Data Collection:** Improvements can be made to field process for metadata integration at time of imagery data collection
 * **Leverage Improving AI capabilities:** Leverage newer models and specific services (such as GCP document AI), and attempt rough classification of the species themselves with generic vision models. Document AI has shown high promise for end-to-end text extraction from these forms, and could be the basis of a simplified and more reliable pipeline. 
 
-![Document AI ex 1](docs/document_ai_zeroshot_fullform1.png)
+![Document AI ex 1](docs/document_ai_zeroshot_fullform.png)
 ![Document AI ex 2](docs/document_ai_zeroshot_fullform2.png)
 
 # Disclaimer
